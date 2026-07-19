@@ -40,6 +40,17 @@ const apiLimiter = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
+// Dynamic Rate Limiter: Bypasses the rate limit if the user provides their own API key
+const dynamicRateLimiter = (req, res, next) => {
+  const userApiKey = req.headers['x-api-key'];
+  if (userApiKey && userApiKey.trim().length > 0) {
+    // User provided their own API key, skip rate limit!
+    return next();
+  }
+  // No user API key, apply the 5-requests-per-day limit!
+  apiLimiter(req, res, next);
+};
+
 /**
  * Get the duration of a media file in seconds using ffprobe
  * @param {string} filePath 
@@ -101,15 +112,20 @@ function compressAudio(inputPath, outputPath) {
 }
 
 // Route to handle transcription
-app.post('/api/transcribe', apiLimiter, upload.single('file'), async (req, res) => {
-  const apiKey = req.headers['x-api-key'];
+app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (req, res) => {
+  let apiKey = req.headers['x-api-key'];
+  
+  // If the user did not provide their own API Key, fall back to the Admin's default key
+  if (!apiKey || apiKey.trim().length === 0) {
+    apiKey = process.env.GEMINI_API_KEY;
+  }
   
   if (!apiKey) {
     // If we have an uploaded file, clean it up immediately
     if (req.file) {
       fs.unlink(req.file.path, () => {});
     }
-    return res.status(400).json({ error: 'Missing Gemini API Key in request headers (x-api-key).' });
+    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
   }
 
   if (!req.file) {

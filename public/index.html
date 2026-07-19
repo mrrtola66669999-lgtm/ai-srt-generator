@@ -469,7 +469,7 @@
           // AI is transcribing
           percent += 1;
           if (percent > 98) percent = 98;
-          statusText.innerHTML = `<i data-lucide="brain-circuit" class="animate-pulse h-4 w-4 text-purple-400"></i> AI (Gemini 3.5 Flash) កំពុងស្ដាប់ និងបង្កើត Subtitles...`;
+          statusText.innerHTML = `<i data-lucide="brain-circuit" class="animate-pulse h-4 w-4 text-purple-400"></i> AI (Gemini 2.5 Flash) កំពុងស្ដាប់ និងបង្កើត Subtitles...`;
         }
         
         progressBar.style.width = `${percent}%`;
@@ -497,7 +497,7 @@
       e.preventDefault();
       
       const apiKey = apiKeyInput.value.trim();
-      if (!apiKey) return;
+      // Empty API key is allowed to support using the server's default key
 
       if (!selectedFile) {
         alert('សូមជ្រើសរើសឯកសារសំឡេង MP3 ជាមុនសិន!');
