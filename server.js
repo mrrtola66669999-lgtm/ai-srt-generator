@@ -241,6 +241,79 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   }
 });
 
+// Helper to parse SRT string into cue objects
+function parseSrt(srtText) {
+  const normalize = srtText.replace(/\r\n/g, '\n').trim();
+  const rawBlocks = normalize.split(/\n\s*\n/);
+  const cues = [];
+  
+  for (const block of rawBlocks) {
+    const lines = block.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    if (lines.length >= 3) {
+      const index = lines[0];
+      const timestamp = lines[1];
+      const text = lines.slice(2).join('\n');
+      cues.push({ index, timestamp, text });
+    } else if (lines.length === 2 && lines[0].includes('-->')) {
+      cues.push({ index: '', timestamp: lines[0], text: lines[1] });
+    }
+  }
+  return cues;
+}
+
+// Helper to translate array of strings in chunks using Gemini JSON mode
+async function translateArray(texts, apiKey) {
+  const ai = new GoogleGenAI({ apiKey });
+  const translated = [];
+  const chunkSize = 50;
+  
+  for (let i = 0; i < texts.length; i += chunkSize) {
+    const chunk = texts.slice(i, i + chunkSize);
+    console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} (${chunk.length} items)...`);
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `You are a professional translator. Translate each string in the following JSON array of subtitles to Khmer. Keep the translation natural and matching the context of the story. Do not explain anything. Return ONLY a valid JSON array of translated strings in the exact same order.
+              
+Input JSON:
+${JSON.stringify(chunk)}`
+            }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: 'application/json',
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
+      }
+    });
+    
+    let chunkTranslated;
+    try {
+      chunkTranslated = JSON.parse(response.text);
+      if (!Array.isArray(chunkTranslated)) {
+        throw new Error('Response is not an array.');
+      }
+    } catch (e) {
+      console.error('Gemini chunk translation failed to parse JSON. Raw response:', response.text);
+      chunkTranslated = chunk; // Fallback to original
+    }
+    
+    translated.push(...chunkTranslated);
+  }
+  
+  return translated;
+}
+
 // Endpoint to translate SRT content to Khmer
 app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
   const { srt } = req.body;
@@ -261,35 +334,26 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
 
   try {
     console.log('Initiating translation of SRT content to Khmer using gemini-3.1-flash-lite...');
-    const ai = new GoogleGenAI({ apiKey });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `You are a professional translator. Translate the subtitle text in this SRT file to Khmer. Keep the exact same SRT timestamps (e.g., 00:00:02:839 --> 00:04:959) and sequence numbers unchanged. Only translate the text content. Output ONLY the translated raw SRT format text. Do not include markdown code blocks or explanations.\n\nSRT Content:\n${srt}`
-            }
-          ]
-        }
-      ],
-      config: {
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-        ]
-      }
-    });
-
-    const translatedSrt = response.text;
-    if (!translatedSrt) {
-      throw new Error('Gemini did not return any translated text.');
+    const cues = parseSrt(srt);
+    if (cues.length === 0) {
+      return res.status(400).json({ error: 'Could not parse any valid subtitle segments from the SRT content.' });
     }
 
+    const textsToTranslate = cues.map(c => c.text);
+    const translatedTexts = await translateArray(textsToTranslate, apiKey);
+
+    const srtLines = [];
+    for (let i = 0; i < cues.length; i++) {
+      const translatedText = translatedTexts[i] || cues[i].text;
+      if (cues[i].index) {
+        srtLines.push(cues[i].index);
+      }
+      srtLines.push(cues[i].timestamp);
+      srtLines.push(translatedText);
+      srtLines.push('');
+    }
+
+    const translatedSrt = srtLines.join('\n');
     console.log('SRT translation complete!');
     return res.json({ translatedSrt });
 
