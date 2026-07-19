@@ -6,7 +6,10 @@ import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import { GoogleGenAI } from '@google/genai';
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
