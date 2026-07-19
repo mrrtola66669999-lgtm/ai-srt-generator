@@ -241,6 +241,64 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   }
 });
 
+// Endpoint to translate SRT content to Khmer
+app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
+  const { srt } = req.body;
+  let apiKey = req.headers['x-api-key'];
+
+  if (!srt) {
+    return res.status(400).json({ error: 'No SRT content provided for translation.' });
+  }
+
+  // Fallback to default API Key if not provided by client
+  if (!apiKey || apiKey.trim().length === 0) {
+    apiKey = process.env.GEMINI_API_KEY;
+  }
+
+  if (!apiKey) {
+    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
+  }
+
+  try {
+    console.log('Initiating translation of SRT content to Khmer using gemini-3.1-flash-lite...');
+    const ai = new GoogleGenAI({ apiKey });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: `You are a professional translator. Translate the subtitle text in this SRT file to Khmer. Keep the exact same SRT timestamps (e.g., 00:00:02:839 --> 00:04:959) and sequence numbers unchanged. Only translate the text content. Output ONLY the translated raw SRT format text. Do not include markdown code blocks or explanations.\n\nSRT Content:\n${srt}`
+            }
+          ]
+        }
+      ],
+      config: {
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
+      }
+    });
+
+    const translatedSrt = response.text;
+    if (!translatedSrt) {
+      throw new Error('Gemini did not return any translated text.');
+    }
+
+    console.log('SRT translation complete!');
+    return res.json({ translatedSrt });
+
+  } catch (error) {
+    console.error('Translation error details:', error);
+    return res.status(500).json({ error: error.message || 'An error occurred during translation.' });
+  }
+});
+
 // Helper to get local network IP addresses
 function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
