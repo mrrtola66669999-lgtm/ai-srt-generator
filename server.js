@@ -7,9 +7,12 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +30,34 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Rate Limiter: Max 5 requests per 24 hours per IP
+const apiLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: { error: 'អ្នកបានអស់សិទ្ធិប្រើប្រាស់សម្រាប់ថ្ងៃនេះហើយ! សូមត្រលប់មកវិញនៅថ្ងៃស្អែក' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+/**
+ * Get the duration of a media file in seconds using ffprobe
+ * @param {string} filePath 
+ * @returns {Promise<number>}
+ */
+function getFileDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) return reject(err);
+      const duration = metadata.format && metadata.format.duration;
+      if (duration) {
+        resolve(parseFloat(duration));
+      } else {
+        reject(new Error('Could not read duration metadata.'));
+      }
+    });
+  });
+}
 
 // Configure Multer for file uploads (max 500MB)
 const storage = multer.diskStorage({
@@ -70,7 +101,7 @@ function compressAudio(inputPath, outputPath) {
 }
 
 // Route to handle transcription
-app.post('/api/transcribe', upload.single('file'), async (req, res) => {
+app.post('/api/transcribe', apiLimiter, upload.single('file'), async (req, res) => {
   const apiKey = req.headers['x-api-key'];
   
   if (!apiKey) {
@@ -87,6 +118,20 @@ app.post('/api/transcribe', upload.single('file'), async (req, res) => {
 
   const uploadedPath = req.file.path;
   const compressedPath = path.join(uploadsDir, `${req.file.filename}-compressed.mp3`);
+  
+  // 0. Verify duration (max 15 minutes = 900 seconds)
+  try {
+    const duration = await getFileDuration(uploadedPath);
+    console.log(`Uploaded file duration: ${duration} seconds (${(duration / 60).toFixed(2)} minutes)`);
+    if (duration > 15 * 60) {
+      fs.unlink(uploadedPath, () => {});
+      return res.status(400).json({ error: 'ឯកសារត្រូវតែមានប្រវែងខ្លីជាង ១៥ នាទី។' });
+    }
+  } catch (err) {
+    console.error('Error verifying duration:', err);
+    fs.unlink(uploadedPath, () => {});
+    return res.status(400).json({ error: 'មិនអាចពិនិត្យប្រវែងឯកសារបានទេ។ ឯកសារអាចមានបញ្ហាខូចខាត។' });
+  }
   
   let googleFileUploaded = null;
   let ai = null;
@@ -124,11 +169,11 @@ app.post('/api/transcribe', upload.single('file'), async (req, res) => {
       throw new Error(`File processing failed. Final state is ${fileState.state}`);
     }
 
-    console.log('File is ACTIVE. Generating SRT subtitles using gemini-3.5-flash...');
+    console.log('File is ACTIVE. Generating SRT subtitles using gemini-2.5-flash...');
     
     // 5. Ask Gemini to generate the SRT content
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         {
           fileData: {
