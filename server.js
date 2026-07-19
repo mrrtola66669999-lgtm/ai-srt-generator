@@ -185,11 +185,11 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
       throw new Error(`File processing failed. Final state is ${fileState.state}`);
     }
 
-    console.log('File is ACTIVE. Generating SRT subtitles using gemini-2.5-flash...');
+    console.log('File is ACTIVE. Generating SRT subtitles using gemini-3.1-flash-lite...');
     
     // 5. Ask Gemini to generate the SRT content
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: [
         {
           fileData: {
