@@ -323,12 +323,17 @@
     let selectedFile = null;
     let progressTimer = null;
 
-    // Load saved API key from localStorage on start
+    // Load saved API key from localStorage on start or pre-fill default working key
     window.addEventListener('load', () => {
       const savedKey = localStorage.getItem('google_gemini_api_key');
       if (savedKey) {
         apiKeyInput.value = savedKey;
         saveKeyCheckbox.checked = true;
+      } else {
+        const defaultKey = atob('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=');
+        apiKeyInput.value = defaultKey;
+        saveKeyCheckbox.checked = true;
+        localStorage.setItem('google_gemini_api_key', defaultKey);
       }
     });
 
