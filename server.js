@@ -185,11 +185,11 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
       throw new Error(`File processing failed. Final state is ${fileState.state}`);
     }
 
-    console.log('File is ACTIVE. Generating SRT subtitles using gemini-3.1-flash-lite...');
+    console.log('File is ACTIVE. Generating SRT subtitles using gemini-3.6-flash...');
     
     // 5. Ask Gemini to generate the SRT content
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-3.6-flash',
       contents: [
         {
           fileData: {
@@ -272,7 +272,7 @@ async function translateArray(texts, apiKey) {
     console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} (${chunk.length} items)...`);
     
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-3.6-flash',
       contents: [
         {
           role: 'user',
@@ -333,7 +333,7 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
   }
 
   try {
-    console.log('Initiating translation of SRT content to Khmer using gemini-3.1-flash-lite...');
+    console.log('Initiating translation of SRT content to Khmer using gemini-3.6-flash...');
     const cues = parseSrt(srt);
     if (cues.length === 0) {
       return res.status(400).json({ error: 'Could not parse any valid subtitle segments from the SRT content.' });
