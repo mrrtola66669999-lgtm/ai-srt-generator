@@ -255,6 +255,57 @@ function isQuotaError(error) {
          msg.includes('too many requests');
 }
 
+/**
+ * Build candidate API keys for a request in strict priority order:
+ * 1. User's Personal Key 1 (Primary)
+ * 2. User's Personal Key 2 (Backup)
+ * 3. Dedicated Server Key assigned to this user for today
+ * @param {express.Request} req 
+ * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
+ */
+function getCandidateKeys(req) {
+  const key1 = (req.headers['x-api-key-1'] || req.headers['x-api-key'] || '').trim();
+  const key2 = (req.headers['x-api-key-2'] || '').trim();
+  const clientId = req.headers['x-client-id'];
+  const clientIp = req.headers['x-forwarded-for'] || req.ip;
+
+  const candidates = [];
+  const added = new Set();
+
+  // 1. User Key 1 (Primary)
+  if (key1 && key1.length > 5) {
+    candidates.push({
+      apiKey: key1,
+      description: "User's Personal Key ទី ១ (Primary)",
+      isUserKey: true
+    });
+    added.add(key1);
+  }
+
+  // 2. User Key 2 (Backup)
+  if (key2 && key2.length > 5 && !added.has(key2)) {
+    candidates.push({
+      apiKey: key2,
+      description: "User's Personal Key ទី ២ (Backup)",
+      isUserKey: true
+    });
+    added.add(key2);
+  }
+
+  // 3. Dedicated Server Key assigned to this user
+  const assigned = getDedicatedKeyForUser(clientId, clientIp);
+  if (assigned && !added.has(assigned.key)) {
+    candidates.push({
+      apiKey: assigned.key,
+      description: `Dedicated Server Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`,
+      isUserKey: false
+    });
+    added.add(assigned.key);
+  }
+
+  return candidates;
+}
+
 // Route to handle transcription
 app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -288,32 +339,10 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   }
 
   // 🔑 CANDIDATE KEYS FOR THIS USER:
-  // 1. ត្រូវប្រើ Key របស់ User ដែលបានដាក់មុន (Try User's own key first)
-  // 2. ពេលអស់ Credit/Quota របស់ User ផ្ទាល់ -> ស្វ័យប្រវត្តិចូលប្រើ Key របស់ Server ដែលបានចែកជូន User នោះសម្រាប់ថ្ងៃនេះ!
-  const userCustomKey = req.headers['x-api-key'];
-  const clientId = req.headers['x-client-id'];
-  const clientIp = req.headers['x-forwarded-for'] || req.ip;
+  // Priority: User Key 1 -> User Key 2 -> Dedicated Server Key
+  const candidateKeys = getCandidateKeys(req);
 
-  const candidateKeys = [];
-
-  // Step 1: User's personal key (if provided)
-  if (userCustomKey && userCustomKey.trim().length > 0) {
-    candidateKeys.push({
-      apiKey: userCustomKey.trim(),
-      description: "User's OWN Personal API Key",
-      isUserKey: true
-    });
-  }
-
-  // Step 2: Dedicated Key assigned to this user from Server pool
-  const assigned = getDedicatedKeyForUser(clientId, clientIp);
-  if (assigned) {
-    candidateKeys.push({
-      apiKey: assigned.key,
-      description: `Dedicated Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`,
-      isUserKey: false
-    });
-  } else if (candidateKeys.length === 0) {
+  if (candidateKeys.length === 0) {
     fs.unlink(uploadedPath, () => {});
     fs.unlink(compressedPath, () => {});
     return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
@@ -402,10 +431,13 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         } catch (_) {}
       }
 
-      // If user's own key ran out of credit/quota and we have a fallback pool key available:
-      if (isUserKey && isQuotaError(err) && (i + 1 < candidateKeys.length)) {
-        console.warn(`⚠️ User's personal API Key ran out of credit/quota (429)! Automatically switching to server's dedicated assigned Key...`);
-        continue; // Try next key (the assigned pool key)!
+      // If the current key failed due to quota or invalid key, and another candidate key is available:
+      const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
+      const isAuthOrQuota = isQuotaError(err) || errMsg.includes('api_key') || errMsg.includes('key not valid') || errMsg.includes('403');
+
+      if ((isUserKey || isQuotaError(err)) && isAuthOrQuota && (i + 1 < candidateKeys.length)) {
+        console.warn(`⚠️ [Key Switch] ${description} could not complete request (${err.message}). Automatically switching to next key (${candidateKeys[i + 1].description})...`);
+        continue; // Try next key!
       }
 
       // Otherwise break
@@ -488,22 +520,13 @@ async function translateArray(texts, apiKey) {
 // Endpoint to translate SRT content to Khmer
 app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
   const { srt } = req.body;
-  let userApiKey = req.headers['x-api-key'];
 
   if (!srt) {
     return res.status(400).json({ error: 'No SRT content provided for translation.' });
   }
 
-  const translateCandidates = [];
-  if (userApiKey && userApiKey.trim().length > 0) {
-    translateCandidates.push({ key: userApiKey.trim(), isUserKey: true });
-  }
-  const assigned = getDedicatedKeyForUser(clientId, clientIp);
-  if (assigned) {
-    translateCandidates.push({ key: assigned.key, isUserKey: false });
-  }
-
-  if (translateCandidates.length === 0) {
+  const candidateKeys = getCandidateKeys(req);
+  if (candidateKeys.length === 0) {
     return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
   }
 
@@ -518,15 +541,18 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
     let translatedTexts = null;
     let lastError = null;
 
-    for (let i = 0; i < translateCandidates.length; i++) {
-      const candidate = translateCandidates[i];
+    for (let i = 0; i < candidateKeys.length; i++) {
+      const candidate = candidateKeys[i];
       try {
-        translatedTexts = await translateArray(textsToTranslate, candidate.key);
+        console.log(`[Translate Attempt ${i + 1}/${candidateKeys.length}] Using ${candidate.description}...`);
+        translatedTexts = await translateArray(textsToTranslate, candidate.apiKey);
         break;
       } catch (err) {
         lastError = err;
-        if (candidate.isUserKey && isQuotaError(err) && (i + 1 < translateCandidates.length)) {
-          console.warn('User key quota exceeded during translation! Auto-falling back to server dedicated key...');
+        const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
+        const isAuthOrQuota = isQuotaError(err) || errMsg.includes('api_key') || errMsg.includes('key not valid') || errMsg.includes('403');
+        if ((candidate.isUserKey || isQuotaError(err)) && isAuthOrQuota && (i + 1 < candidateKeys.length)) {
+          console.warn(`Translation attempt with ${candidate.description} failed (${err.message}). Switching to next key (${candidateKeys[i + 1].description})...`);
           continue;
         }
         break;

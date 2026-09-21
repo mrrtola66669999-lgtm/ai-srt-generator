@@ -119,78 +119,90 @@
 
         <form id="srtForm" class="space-y-6">
           
-          <!-- System Free Key Box -->
-          <div class="space-y-1.5 p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200">
+          <!-- User Personal API Key 1 -->
+          <div class="space-y-1.5">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <label class="text-xs font-bold text-zinc-700 flex items-center gap-1.5">
-                <i data-lucide="shield-check" class="h-4 w-4 text-emerald-600"></i>
-                <span>API Key ប្រព័ន្ធឥតគិតថ្លៃ (System Free Key Pool)</span>
+              <label for="apiKey1" class="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                <i data-lucide="key" class="h-4 w-4 text-brand-600"></i>
+                <span>Google AI Studio API Key ទី ១ (Key ចម្បង / Primary)</span>
               </label>
-              <span class="text-[10px] text-emerald-700 bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 w-fit">
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                ភ្ជាប់ស្វ័យប្រវត្តិ (Active)
+              <span class="text-[10px] text-brand-600 font-semibold bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full w-fit">
+                ដំណើរការមុនគេ (Priority 1)
               </span>
-            </div>
-            <div class="relative rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
-              <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <i data-lucide="key" class="h-4 w-4 text-zinc-400"></i>
-              </span>
-              <input 
-                type="text" 
-                readonly 
-                value="AQ.Ab8RN6•••••••••••••••••••••••••••••••• (Server Pool)" 
-                class="w-full pl-9 pr-3 py-2 bg-transparent border-0 text-zinc-500 text-xs font-mono cursor-not-allowed select-none focus:ring-0 focus:outline-none"
-              />
-            </div>
-            <p class="text-[10px] text-zinc-400">
-              ប្រព័ន្ធបានផ្តល់ជូន Key ឥតគិតថ្លៃដោយស្វ័យប្រវត្តិតាមថ្ងៃ (១ Key ក្នុងមួយ User)។
-            </p>
-          </div>
-
-          <!-- User Personal API Key Input -->
-          <div class="space-y-2">
-            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <label for="apiKey" class="block text-sm font-semibold text-brand-700 flex items-center gap-1.5">
-                <i data-lucide="user-check" class="h-4 w-4 text-brand-600"></i>
-                <span>Google AI Studio API Key ផ្ទាល់ខ្លួន (ប្រសិនបើមាន)</span>
-              </label>
-              <span class="text-[11px] text-zinc-400 font-normal">ប្រើ Key ផ្ទាល់ខ្លួនជាមុន</span>
             </div>
             <div class="relative rounded-xl border border-zinc-200 bg-zinc-50/70 overflow-hidden glow-border transition-all duration-300">
               <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <i data-lucide="key-round" class="h-4.5 w-4.5 text-zinc-400"></i>
+                <i data-lucide="key-round" class="h-4 w-4 text-zinc-400"></i>
               </span>
               <input 
                 type="password" 
-                id="apiKey" 
-                name="apiKey" 
-                placeholder="បញ្ចូល Key ផ្ទាល់ខ្លួនរបស់អ្នកនៅទីនេះ (AIzaSy... ឬ AQ.Ab8...)" 
-                class="w-full pl-10 pr-12 py-3.5 bg-transparent border-0 text-zinc-900 placeholder-zinc-400 focus:ring-0 focus:outline-none text-sm transition-all"
+                id="apiKey1" 
+                name="apiKey1" 
+                placeholder="បញ្ចូល API Key ទី ១ របស់អ្នក (AIzaSy... ឬ AQ.Ab8...)" 
+                class="w-full pl-10 pr-12 py-3 bg-transparent border-0 text-zinc-900 placeholder-zinc-400 focus:ring-0 focus:outline-none text-xs sm:text-sm font-mono transition-all"
               />
               <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
                 <button 
                   type="button" 
-                  id="toggleApiKey"
-                  title="Show/Hide Key"
+                  id="toggleApiKey1"
+                  title="Show/Hide Key 1"
                   class="text-zinc-400 hover:text-zinc-600 transition-colors p-1.5 hover:bg-zinc-200/50 rounded-lg cursor-pointer"
                 >
-                  <i data-lucide="eye" id="eyeIcon" class="h-4 w-4"></i>
+                  <i data-lucide="eye" id="eyeIcon1" class="h-4 w-4"></i>
                 </button>
               </div>
             </div>
-            <!-- Remember Key Checkbox -->
-            <div class="flex items-center gap-2 mt-1.5 px-1">
+          </div>
+
+          <!-- User Personal API Key 2 -->
+          <div class="space-y-1.5">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+              <label for="apiKey2" class="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                <i data-lucide="key-round" class="h-4 w-4 text-purple-600"></i>
+                <span>Google AI Studio API Key ទី ២ (Key បម្រុង / Backup - បើមាន)</span>
+              </label>
+              <span class="text-[10px] text-purple-600 font-semibold bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full w-fit">
+                ដំណើរការពេល Key ទី ១ អស់ (Priority 2)
+              </span>
+            </div>
+            <div class="relative rounded-xl border border-zinc-200 bg-zinc-50/70 overflow-hidden glow-border transition-all duration-300">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <i data-lucide="key-round" class="h-4 w-4 text-zinc-400"></i>
+              </span>
+              <input 
+                type="password" 
+                id="apiKey2" 
+                name="apiKey2" 
+                placeholder="បញ្ចូល API Key ទី ២ របស់អ្នក (បើមាន - AIzaSy... ឬ AQ.Ab8...)" 
+                class="w-full pl-10 pr-12 py-3 bg-transparent border-0 text-zinc-900 placeholder-zinc-400 focus:ring-0 focus:outline-none text-xs sm:text-sm font-mono transition-all"
+              />
+              <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <button 
+                  type="button" 
+                  id="toggleApiKey2"
+                  title="Show/Hide Key 2"
+                  class="text-zinc-400 hover:text-zinc-600 transition-colors p-1.5 hover:bg-zinc-200/50 rounded-lg cursor-pointer"
+                >
+                  <i data-lucide="eye" id="eyeIcon2" class="h-4 w-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Remember Keys Checkbox & Clear Explanation -->
+          <div class="space-y-1.5 pt-0.5">
+            <div class="flex items-center gap-2 px-1">
               <input 
                 type="checkbox" 
                 id="saveKey" 
                 class="rounded bg-white border-zinc-300 text-brand-600 focus:ring-brand-500/30 focus:ring-offset-0 h-4 w-4 cursor-pointer accent-brand-600"
               />
               <label for="saveKey" class="text-xs text-zinc-600 font-medium select-none cursor-pointer hover:text-zinc-800 transition-colors">
-                រក្សាទុក API Key ផ្ទាល់ខ្លួននេះសម្រាប់ប្រើលើកក្រោយ (Remember)
+                រក្សាទុក API Keys ទាំងនេះសម្រាប់ប្រើលើកក្រោយ (Remember in browser)
               </label>
             </div>
-            <p class="text-[11px] text-zinc-500 italic px-1">
-              *ចំណាំ៖ ប្រសិនបើអ្នកដាក់ Key ផ្ទាល់ខ្លួន ប្រព័ន្ធនឹងប្រើ Key របស់អ្នកមុនគេ ហើយបើអស់ Credit វានឹងប្តូរមកប្រើ Key របស់ប្រព័ន្ធខាងលើដោយស្វ័យប្រវត្តិ។
+            <p class="text-[11px] text-zinc-500 leading-relaxed px-1">
+              *<strong>របៀបដំណើរការ</strong>៖ ប្រព័ន្ធនឹងដំណើរការ <strong>Key ទី ១</strong> របស់អ្នកជាមុន។ បើ Key ទី ១ អស់ Credit វានឹងស្វ័យប្រវត្តិចូលទៅប្រើ <strong>Key ទី ២</strong>។ ប្រសិនបើអស់ទាំងពីរ (ឬមិនបានដាក់ Key) ទើបវាស្វ័យប្រវត្តិចូលទៅប្រើ <strong>Key ឥតគិតថ្លៃរបស់ប្រព័ន្ធ</strong> ដែលបានចែកជូន។
             </p>
           </div>
 
@@ -333,9 +345,12 @@
     lucide.createIcons();
 
     // DOM Elements
-    const apiKeyInput = document.getElementById('apiKey');
-    const toggleApiKey = document.getElementById('toggleApiKey');
-    const eyeIcon = document.getElementById('eyeIcon');
+    const apiKeyInput1 = document.getElementById('apiKey1');
+    const apiKeyInput2 = document.getElementById('apiKey2');
+    const toggleApiKey1 = document.getElementById('toggleApiKey1');
+    const toggleApiKey2 = document.getElementById('toggleApiKey2');
+    const eyeIcon1 = document.getElementById('eyeIcon1');
+    const eyeIcon2 = document.getElementById('eyeIcon2');
     const saveKeyCheckbox = document.getElementById('saveKey');
     const srtForm = document.getElementById('srtForm');
     const dropZone = document.getElementById('dropZone');
@@ -369,33 +384,41 @@
       localStorage.setItem('srt_client_id', clientId);
     }
 
-    // Load user's own saved API key from localStorage if they previously saved one
+    // Load user's own saved API keys from localStorage if they previously saved them
     window.addEventListener('load', () => {
-      const oldServerKey = atob('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=');
-      const savedKey = localStorage.getItem('google_gemini_api_key');
+      // Clean up any legacy single-key cache if it exists
+      localStorage.removeItem('google_gemini_api_key');
+
+      const savedKey1 = localStorage.getItem('user_gemini_api_key_1');
+      const savedKey2 = localStorage.getItem('user_gemini_api_key_2');
       
-      // If the saved key was the old server default key, clean it up!
-      if (savedKey === oldServerKey) {
-        localStorage.removeItem('google_gemini_api_key');
-        apiKeyInput.value = '';
-        saveKeyCheckbox.checked = false;
-      } else if (savedKey && savedKey.trim().length > 0) {
-        apiKeyInput.value = savedKey;
+      let hasSaved = false;
+      if (savedKey1 && savedKey1.trim().length > 0) {
+        apiKeyInput1.value = savedKey1.trim();
+        hasSaved = true;
+      }
+      if (savedKey2 && savedKey2.trim().length > 0) {
+        apiKeyInput2.value = savedKey2.trim();
+        hasSaved = true;
+      }
+      if (hasSaved) {
         saveKeyCheckbox.checked = true;
       }
     });
 
-    // Toggle API Key Visibility
-    toggleApiKey.addEventListener('click', () => {
-      const type = apiKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
-      apiKeyInput.setAttribute('type', type);
-      
-      // Update eye icon
-      if (type === 'text') {
-        eyeIcon.setAttribute('data-lucide', 'eye-off');
-      } else {
-        eyeIcon.setAttribute('data-lucide', 'eye');
-      }
+    // Toggle API Key 1 Visibility
+    toggleApiKey1.addEventListener('click', () => {
+      const type = apiKeyInput1.getAttribute('type') === 'password' ? 'text' : 'password';
+      apiKeyInput1.setAttribute('type', type);
+      eyeIcon1.setAttribute('data-lucide', type === 'text' ? 'eye-off' : 'eye');
+      lucide.createIcons();
+    });
+
+    // Toggle API Key 2 Visibility
+    toggleApiKey2.addEventListener('click', () => {
+      const type = apiKeyInput2.getAttribute('type') === 'password' ? 'text' : 'password';
+      apiKeyInput2.setAttribute('type', type);
+      eyeIcon2.setAttribute('data-lucide', type === 'text' ? 'eye-off' : 'eye');
       lucide.createIcons();
     });
 
@@ -545,18 +568,24 @@
     srtForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const apiKey = apiKeyInput.value.trim();
+      const apiKey1 = apiKeyInput1.value.trim();
+      const apiKey2 = apiKeyInput2.value.trim();
 
       if (!selectedFile) {
         alert('សូមជ្រើសរើសឯកសារសំឡេង MP3 ជាមុនសិន!');
         return;
       }
 
-      // Save API Key if checked
+      // Save API Keys if checked
       if (saveKeyCheckbox.checked) {
-        localStorage.setItem('google_gemini_api_key', apiKey);
+        if (apiKey1) localStorage.setItem('user_gemini_api_key_1', apiKey1);
+        else localStorage.removeItem('user_gemini_api_key_1');
+
+        if (apiKey2) localStorage.setItem('user_gemini_api_key_2', apiKey2);
+        else localStorage.removeItem('user_gemini_api_key_2');
       } else {
-        localStorage.removeItem('google_gemini_api_key');
+        localStorage.removeItem('user_gemini_api_key_1');
+        localStorage.removeItem('user_gemini_api_key_2');
       }
 
       // UI State: Loading
@@ -576,7 +605,9 @@
         const response = await fetch('/api/transcribe', {
           method: 'POST',
           headers: {
-            'x-api-key': apiKey,
+            'x-api-key-1': apiKey1,
+            'x-api-key-2': apiKey2,
+            'x-api-key': apiKey1 || apiKey2,
             'x-client-id': clientId
           },
           body: formData
