@@ -25,17 +25,13 @@ const __dirname = path.dirname(__filename);
 const ENCODED_POOL = [
   'QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=',
   'QVEuQWI4Uk42S2NMWjV3NFhMSXdpYzBPcHNtWGd2b1NQX1BvSnZXcUw4VW1sd21VTG43b0E=',
-  'QVEuQWI4Uk42STQwM0x2WGxwX3g4S0F6NW9xVFhLSVRwUzAzbWdWUzdnQnhVM0ZDMVNmbVE=',
-  'QVEuQWI4Uk42SUZOTDVaRnlIM0o1LVJzdjliaHdVclQ3dW8wcExmVFUwMEFUSU5XREtSbUE=',
   'QVEuQWI4Uk42S3NzZGNVS211aEpiM0dLWXlaWEJkNTUyYko4N3F5Wk1MOXhwVUJuR19HRFE=',
   'QVEuQWI4Uk42TGpHRVZWY2lCTEZLV3MwejBSb2E0ZFAzZUlTQUVLX1hBUlVoeEJyTlRVQmc=',
   'QVEuQWI4Uk42SjI5czBRNElhVG9zdTBnbkxJT3hOMkdrZVJZdDM2cFdXaUZFUkVaejI3Wnc=',
   'QVEuQWI4Uk42SmhjendSSDhqemhPVGt0UVRSM21BSVRmZ0pIYV9qaUlTTnVuV2xEcHdVekE=',
-  'QVEuQWI4Uk42SkFnSVlwLWhlWEpjUjgzSkllNm16aGx0WUxYa2dMVmlJakttejJSOXBJWHc=',
   'QVEuQWI4Uk42SjNSWDhhdlIwZFZQWFRQVkQ2UGljWEZiMEQ4U1FYZTZiU0xKc2ZzRW1reUE=',
   'QVEuQWI4Uk42S1BabFJZUVE4YjRpdXQ2RENpd3Y0TzBiR2wwemVubnB5NjR4Unhldm5pcnc=',
   'QVEuQWI4Uk42TE5ZeGVNSTR5NkI4MER3QjhFTFV4U3N4dVNjUzF2Q0JWTTFiUWFWS2M3eHc=',
-  'QVEuQWI4Uk42SkBNOTROdmV1U3lORGRKTk9vVjY4WEVvbGtHZXdDeDdhR1pwaTJENFFpT0E=',
   'QVEuQWI4Uk42S0duYWZzTHdCNUdkS29QSEdBc0V5ei1yLWJ5UHdVTE5hbXZZb1NBODZ3S2c=',
   'QVEuQWI4Uk42THBxdDNCdWF6RHVOcHhfaXlmZ0V3aVR2T3cxd2RrQklHc1lUQkVaeTg4Ync=',
   'QVEuQWI4Uk42S2Z0eWJ4MFVDd1RfTEczMFRTUDBGMlhJVTFnVVlwcXFySWpnWDFNcDR4QWc=',
@@ -256,10 +252,39 @@ function isQuotaError(error) {
 }
 
 /**
+ * Check if an error warrants falling back to the next available API key
+ * Handles: Quota/Rate Limit (429), Invalid Auth/Token (401), Prepayment Depleted (402), 
+ * Permission Denied (403), Temporary High Demand (503)
+ * @param {Error} error 
+ * @returns {boolean}
+ */
+function isFallbackableError(error) {
+  if (!error) return false;
+  if (isQuotaError(error)) return true;
+  const msg = (error && error.message) ? error.message.toLowerCase() : '';
+  return msg.includes('401') ||
+         msg.includes('402') ||
+         msg.includes('403') ||
+         msg.includes('429') ||
+         msg.includes('503') ||
+         msg.includes('unauthenticated') ||
+         msg.includes('invalid authentication') ||
+         msg.includes('credentials') ||
+         msg.includes('api_key') ||
+         msg.includes('key not valid') ||
+         msg.includes('depleted') ||
+         msg.includes('permission_denied') ||
+         msg.includes('denied access') ||
+         msg.includes('service account') ||
+         msg.includes('resource_exhausted');
+}
+
+/**
  * Build candidate API keys for a request in strict priority order:
  * 1. User's Personal Key 1 (Primary)
  * 2. User's Personal Key 2 (Backup)
  * 3. Dedicated Server Key assigned to this user for today
+ * 4. All remaining active Server Pool keys (Emergency Backups)
  * @param {express.Request} req 
  * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
  */
@@ -301,6 +326,20 @@ function getCandidateKeys(req) {
       isUserKey: false
     });
     added.add(assigned.key);
+  }
+
+  // 4. Server Pool Backup Keys: In case the dedicated key or user keys fail, seamlessly fallback to remaining pool keys!
+  const pool = getApiKeyPool();
+  for (let idx = 0; idx < pool.length; idx++) {
+    const k = pool[idx];
+    if (!added.has(k)) {
+      candidates.push({
+        apiKey: k,
+        description: `Server Pool Backup Key #${idx + 1}`,
+        isUserKey: false
+      });
+      added.add(k);
+    }
   }
 
   return candidates;
@@ -431,12 +470,9 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         } catch (_) {}
       }
 
-      // If the current key failed due to quota or invalid key, and another candidate key is available:
-      const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
-      const isAuthOrQuota = isQuotaError(err) || errMsg.includes('api_key') || errMsg.includes('key not valid') || errMsg.includes('403');
-
-      if ((isUserKey || isQuotaError(err)) && isAuthOrQuota && (i + 1 < candidateKeys.length)) {
-        console.warn(`⚠️ [Key Switch] ${description} could not complete request (${err.message}). Automatically switching to next key (${candidateKeys[i + 1].description})...`);
+      // If the current key failed due to quota, auth, invalid key, or prepayment, seamlessly rotate to next key:
+      if (isFallbackableError(err) && (i + 1 < candidateKeys.length)) {
+        console.warn(`⚠️ [Key Switch] ${description} failed (${err.message}). Automatically switching to next key (${candidateKeys[i + 1].description})...`);
         continue; // Try next key!
       }
 
@@ -452,12 +488,18 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   if (srtTextResult) {
     return res.json({ srt: srtTextResult, filename: `${path.parse(req.file.originalname).name}.srt` });
   } else {
+    const rawMsg = (lastError && lastError.message) || '';
     if (isQuotaError(lastError)) {
       return res.status(429).json({ 
-        error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ថ្មីដើម្បីបន្តប្រើប្រាស់។' 
+        error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់។' 
       });
     }
-    return res.status(500).json({ error: (lastError && lastError.message) || 'An error occurred during transcription.' });
+    if (rawMsg.includes('401') || rawMsg.includes('authentication') || rawMsg.includes('UNAUTHENTICATED')) {
+      return res.status(401).json({
+        error: 'API Key មិនត្រឹមត្រូវ ឬផុតកំណត់។ សូមពិនិត្យមើល Google AI Studio API Key របស់អ្នកឡើងវិញ។'
+      });
+    }
+    return res.status(500).json({ error: rawMsg || 'An error occurred during transcription.' });
   }
 });
 
@@ -549,9 +591,7 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
         break;
       } catch (err) {
         lastError = err;
-        const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
-        const isAuthOrQuota = isQuotaError(err) || errMsg.includes('api_key') || errMsg.includes('key not valid') || errMsg.includes('403');
-        if ((candidate.isUserKey || isQuotaError(err)) && isAuthOrQuota && (i + 1 < candidateKeys.length)) {
+        if (isFallbackableError(err) && (i + 1 < candidateKeys.length)) {
           console.warn(`Translation attempt with ${candidate.description} failed (${err.message}). Switching to next key (${candidateKeys[i + 1].description})...`);
           continue;
         }
