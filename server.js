@@ -22,12 +22,30 @@ const __dirname = path.dirname(__filename);
 // =========================================================================
 // លោកអ្នកអាចបន្ថែម API Keys ទាំង ១០ (ឬច្រើនជាងនេះ) នៅខាងក្រោមនេះ៖
 // ឬកំណត់ក្នុង Render Environment Variables: GEMINI_API_KEYS="key1,key2,key3,..."
-const BUILTIN_KEYS_POOL = [
-  Buffer.from('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=', 'base64').toString('utf8'),
-  // ដាក់ Key ទី ២, ទី ៣... ទី ១០ នៅទីនេះ៖
-  // "AIzaSy...",
-  // "AIzaSy...",
+const ENCODED_POOL = [
+  'QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=',
+  'QVEuQWI4Uk42S2NMWjV3NFhMSXdpYzBPcHNtWGd2b1NQX1BvSnZXcUw4VW1sd21VTG43b0E=',
+  'QVEuQWI4Uk42STQwM0x2WGxwX3g4S0F6NW9xVFhLSVRwUzAzbWdWUzdnQnhVM0ZDMVNmbVE=',
+  'QVEuQWI4Uk42SUZOTDVaRnlIM0o1LVJzdjliaHdVclQ3dW8wcExmVFUwMEFUSU5XREtSbUE=',
+  'QVEuQWI4Uk42S3NzZGNVS211aEpiM0dLWXlaWEJkNTUyYko4N3F5Wk1MOXhwVUJuR19HRFE=',
+  'QVEuQWI4Uk42TGpHRVZWY2lCTEZLV3MwejBSb2E0ZFAzZUlTQUVLX1hBUlVoeEJyTlRVQmc=',
+  'QVEuQWI4Uk42SjI5czBRNElhVG9zdTBnbkxJT3hOMkdrZVJZdDM2cFdXaUZFUkVaejI3Wnc=',
+  'QVEuQWI4Uk42SmhjendSSDhqemhPVGt0UVRSM21BSVRmZ0pIYV9qaUlTTnVuV2xEcHdVekE=',
+  'QVEuQWI4Uk42SkFnSVlwLWhlWEpjUjgzSkllNm16aGx0WUxYa2dMVmlJakttejJSOXBJWHc=',
+  'QVEuQWI4Uk42SjNSWDhhdlIwZFZQWFRQVkQ2UGljWEZiMEQ4U1FYZTZiU0xKc2ZzRW1reUE=',
+  'QVEuQWI4Uk42S1BabFJZUVE4YjRpdXQ2RENpd3Y0TzBiR2wwemVubnB5NjR4Unhldm5pcnc=',
+  'QVEuQWI4Uk42TE5ZeGVNSTR5NkI4MER3QjhFTFV4U3N4dVNjUzF2Q0JWTTFiUWFWS2M3eHc=',
+  'QVEuQWI4Uk42SkBNOTROdmV1U3lORGRKTk9vVjY4WEVvbGtHZXdDeDdhR1pwaTJENFFpT0E=',
+  'QVEuQWI4Uk42S0duYWZzTHdCNUdkS29QSEdBc0V5ei1yLWJ5UHdVTE5hbXZZb1NBODZ3S2c=',
+  'QVEuQWI4Uk42THBxdDNCdWF6RHVOcHhfaXlmZ0V3aVR2T3cxd2RrQklHc1lUQkVaeTg4Ync=',
+  'QVEuQWI4Uk42S2Z0eWJ4MFVDd1RfTEczMFRTUDBGMlhJVTFnVVlwcXFySWpnWDFNcDR4QWc=',
+  'QVEuQWI4Uk42S2h0YVBDcFNaMzNDeEFlazE0cERsX2lqc2FDTXpaR1pjakhRc1FGQV84cVE=',
+  'QVEuQWI4Uk42Sjhia05fNzhsRDNIZE1NVEh2YkhvZ0NlM3FHNThxRndwYzdiUkxPYkNKMEE=',
+  'QVEuQWI4Uk42S1JsT0ZISF9BU290b3hjdnpIenc4M3JfR3dBVlU1NGNfcXlYS2MtR1VjMkE=',
+  'QVEuQWI4Uk42S3lhWTA3SU50T2ZTc3hMWkJXYlNNODVkaVJ0X1MwY0JNUFNLY3VEMHpROGc='
 ];
+
+const BUILTIN_KEYS_POOL = ENCODED_POOL.map(enc => Buffer.from(enc, 'base64').toString('utf8'));
 
 /**
  * Get all available API keys from Environment variables and built-in pool
