@@ -28,7 +28,7 @@ const ENCODED_POOL = [
   'QVEuQWI4Uk42S3NzZGNVS211aEpiM0dLWXlaWEJkNTUyYko4N3F5Wk1MOXhwVUJuR19HRFE=',
   'QVEuQWI4Uk42TGpHRVZWY2lCTEZLV3MwejBSb2E0ZFAzZUlTQUVLX1hBUlVoeEJyTlRVQmc=',
   'QVEuQWI4Uk42SjI5czBRNElhVG9zdTBnbkxJT3hOMkdrZVJZdDM2cFdXaUZFUkVaejI3Wnc=',
-  'QVEuQWI4Uk42SmhjendSSDhqemhPVGt0UVRSM21BSVRmZ0pIYV9qaUlTTnVuV2xEcHdVekE=',
+  // Key 6 removed (revoked by Google)
   'QVEuQWI4Uk42SjNSWDhhdlIwZFZQWFRQVkQ2UGljWEZiMEQ4U1FYZTZiU0xKc2ZzRW1reUE=',
   'QVEuQWI4Uk42S1BabFJZUVE4YjRpdXQ2RENpd3Y0TzBiR2wwemVubnB5NjR4Unhldm5pcnc=',
   'QVEuQWI4Uk42TE5ZeGVNSTR5NkI4MER3QjhFTFV4U3N4dVNjUzF2Q0JWTTFiUWFWS2M3eHc=',
@@ -120,7 +120,7 @@ function getDedicatedKeyForUser(clientId, clientIp) {
   return newAssignment;
 }
 
-const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest'];
 
 /**
  * Generate content using GoogleGenAI with multi-model fallback to ensure high reliability
