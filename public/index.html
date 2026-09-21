@@ -298,35 +298,110 @@
 
       <!-- Result Card -->
       <div id="resultCard" class="hidden bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-zinc-200/80 space-y-4 transition-all duration-500 scale-95 opacity-0">
+        
+        <!-- Header & Top Action Buttons -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-4">
           <div>
-            <h3 class="font-outfit font-bold text-lg text-zinc-900">ឯកសារ Subtitle (.srt) រួចរាល់ហើយ!</h3>
-            <p id="resultFileName" class="text-xs text-zinc-500 mt-0.5">my_audio.srt</p>
+            <div class="flex items-center gap-2">
+              <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h3 class="font-outfit font-bold text-lg text-zinc-900">ឯកសារ Subtitle (.srt) រួចរាល់ហើយ!</h3>
+            </div>
+            <p id="resultFileName" class="text-xs text-zinc-500 mt-0.5 font-mono">my_audio.srt</p>
           </div>
-          <div class="flex items-center gap-2.5 w-full md:w-auto">
+
+          <!-- Action Buttons (Translate & Download) -->
+          <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <!-- Translate to Khmer Button -->
             <button 
-              id="copyBtn" 
-              class="flex-1 md:flex-none py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg text-xs transition-all duration-300 flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+              id="translateBtn" 
+              type="button"
+              class="flex-1 sm:flex-none py-2.5 px-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-brand-600 hover:from-purple-500 hover:to-brand-500 text-white font-bold rounded-xl text-xs transition-all duration-300 flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/25 cursor-pointer active:scale-95"
             >
-              <i data-lucide="copy" class="h-3.5 w-3.5"></i>
-              <span>Copy SRT</span>
+              <i data-lucide="languages" class="h-4 w-4"></i>
+              <span id="translateBtnText">បកប្រែជាភាសាខ្មែរ (Khmer)</span>
             </button>
+
+            <!-- Download Button -->
             <button 
               id="downloadBtn" 
-              class="flex-1 md:flex-none py-2.5 px-4 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/10 cursor-pointer"
+              type="button"
+              class="flex-1 sm:flex-none py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold rounded-xl text-xs transition-all duration-300 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
             >
-              <i data-lucide="download" class="h-3.5 w-3.5"></i>
+              <i data-lucide="download" class="h-4 w-4"></i>
               <span>Download SRT</span>
             </button>
           </div>
         </div>
+
+        <!-- Language Tabs & Copy Actions Bar -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          <!-- Switch Tabs (Original vs Khmer) -->
+          <div class="flex items-center gap-1 p-1 bg-zinc-100/90 rounded-xl border border-zinc-200/80 w-fit">
+            <button 
+              id="tabOriginal" 
+              type="button" 
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 bg-white text-zinc-900 shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <i data-lucide="file-text" class="h-3.5 w-3.5 text-zinc-500"></i>
+              <span>ច្បាប់ដើម (Original)</span>
+            </button>
+            <button 
+              id="tabKhmer" 
+              type="button" 
+              class="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
+            >
+              <i data-lucide="sparkles" class="h-3.5 w-3.5 text-purple-600"></i>
+              <span>ភាសាខ្មែរ (Khmer)</span>
+              <span id="khmerBadge" class="hidden text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold">រួចរាល់</span>
+            </button>
+          </div>
+
+          <!-- Dual Copy Options (Full SRT or Plain Text) -->
+          <div class="flex items-center gap-2">
+            <!-- Copy Full SRT (with timecode) -->
+            <button 
+              id="copyBtn" 
+              type="button"
+              class="py-2 px-3.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-700 font-bold rounded-xl text-xs transition-all duration-200 flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+              title="ចម្លងទម្រង់ SRT ទាំងមូល (មានទាំង Timecode និងអត្ថបទ)"
+            >
+              <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+              <span id="copyBtnText">Copy SRT ពេញលេញ</span>
+            </button>
+
+            <!-- Copy Text Only (No timestamps) -->
+            <button 
+              id="copyTextOnlyBtn" 
+              type="button"
+              class="py-2 px-3.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-300 text-zinc-700 font-medium rounded-xl text-xs transition-all duration-200 flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+              title="ចម្លងតែអក្សរ Subtitle (គ្មាន Timecode សម្រាប់បញ្ចូលក្នុង CapCut)"
+            >
+              <i data-lucide="align-left" class="h-3.5 w-3.5 text-zinc-500"></i>
+              <span id="copyTextOnlyBtnText">Copy តែអត្ថបទ</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Translation Status Banner (shown when translating) -->
+        <div id="translationBanner" class="hidden p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs text-purple-800 animate-fade-in">
+          <div class="flex items-center gap-2">
+            <span id="translationBannerText">កំពុងបកប្រែជាភាសាខ្មែរ...</span>
+          </div>
+        </div>
         
         <!-- SRT Text Viewer -->
-        <div class="relative bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden shadow-inner">
+        <div class="relative bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-inner">
+          <div class="flex items-center justify-between px-4 py-2 bg-zinc-800/80 border-b border-zinc-800 text-[11px] text-zinc-400">
+            <span id="viewerLabel" class="font-medium">ច្បាប់ដើម (Original SRT)</span>
+            <span class="text-[10px] text-zinc-400 flex items-center gap-1">
+              <i data-lucide="info" class="h-3 w-3"></i>
+              <span>អាច Select & Copy ដោយផ្ទាល់បាន</span>
+            </span>
+          </div>
           <textarea 
             id="srtViewer" 
             readonly 
-            class="w-full h-80 p-4 font-mono text-xs text-zinc-100 bg-transparent focus:ring-0 focus:outline-none resize-none"
+            class="w-full h-80 p-4 font-mono text-xs text-zinc-100 bg-transparent focus:ring-0 focus:outline-none resize-none select-all leading-relaxed"
             placeholder="Subtitles will appear here..."
           ></textarea>
         </div>
@@ -372,10 +447,23 @@
     const resultFileName = document.getElementById('resultFileName');
     const srtViewer = document.getElementById('srtViewer');
     const copyBtn = document.getElementById('copyBtn');
+    const copyTextOnlyBtn = document.getElementById('copyTextOnlyBtn');
     const downloadBtn = document.getElementById('downloadBtn');
+    const translateBtn = document.getElementById('translateBtn');
+    const translateBtnText = document.getElementById('translateBtnText');
+    const tabOriginal = document.getElementById('tabOriginal');
+    const tabKhmer = document.getElementById('tabKhmer');
+    const khmerBadge = document.getElementById('khmerBadge');
+    const translationBanner = document.getElementById('translationBanner');
+    const translationBannerText = document.getElementById('translationBannerText');
+    const viewerLabel = document.getElementById('viewerLabel');
 
     let selectedFile = null;
     let progressTimer = null;
+    let originalSrt = '';
+    let khmerSrt = '';
+    let currentTab = 'original'; // 'original' | 'khmer'
+    let baseFileName = 'subtitles';
 
     // Generate or retrieve persistent Client ID for dedicated daily key assignment
     let clientId = localStorage.getItem('srt_client_id');
@@ -628,9 +716,16 @@
         // Processing success
         stopProgressSimulation(true);
         
-        // Show result Card
-        srtViewer.value = data.srt;
-        resultFileName.textContent = data.filename;
+        // Populate result data
+        originalSrt = data.srt;
+        khmerSrt = '';
+        currentTab = 'original';
+        baseFileName = (data.filename || 'my_audio.srt').replace(/\.srt$/i, '');
+        
+        translateBtnText.textContent = 'បកប្រែជាភាសាខ្មែរ (Khmer)';
+        khmerBadge.classList.add('hidden');
+        translationBanner.classList.add('hidden');
+        updateViewer();
         
         resultCard.classList.remove('hidden');
         setTimeout(() => {
@@ -649,6 +744,188 @@
       }
     });
 
+    // Helper to update the subtitle viewer based on active tab
+    function updateViewer() {
+      if (currentTab === 'original') {
+        srtViewer.value = originalSrt;
+        resultFileName.textContent = `${baseFileName}.srt`;
+        viewerLabel.textContent = 'ច្បាប់ដើម (Original SRT)';
+        tabOriginal.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 bg-white text-zinc-900 shadow-sm flex items-center gap-1.5 cursor-pointer';
+        tabKhmer.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 transition-all duration-200 flex items-center gap-1.5 cursor-pointer';
+      } else {
+        srtViewer.value = khmerSrt;
+        resultFileName.textContent = `${baseFileName}_khmer.srt`;
+        viewerLabel.textContent = 'បកប្រែជាភាសាខ្មែរ (Khmer Subtitles)';
+        tabKhmer.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 bg-purple-600 text-white shadow-sm flex items-center gap-1.5 cursor-pointer';
+        tabOriginal.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-800 transition-all duration-200 flex items-center gap-1.5 cursor-pointer';
+      }
+      lucide.createIcons();
+    }
+
+    // Switch to Original Tab
+    tabOriginal.addEventListener('click', () => {
+      currentTab = 'original';
+      updateViewer();
+    });
+
+    // Switch to Khmer Tab (or trigger translation if not yet translated)
+    tabKhmer.addEventListener('click', () => {
+      if (!khmerSrt) {
+        translateBtn.click();
+        return;
+      }
+      currentTab = 'khmer';
+      updateViewer();
+    });
+
+    // Translate to Khmer handler
+    translateBtn.addEventListener('click', async () => {
+      if (!originalSrt) return;
+
+      // If already translated, just toggle to Khmer tab!
+      if (khmerSrt) {
+        currentTab = 'khmer';
+        updateViewer();
+        return;
+      }
+
+      // UI state: Loading translation
+      translateBtn.disabled = true;
+      translateBtn.classList.add('opacity-70', 'cursor-not-allowed');
+      translateBtnText.textContent = 'កំពុងបកប្រែជាភាសាខ្មែរ...';
+
+      translationBanner.classList.remove('hidden');
+      translationBanner.className = 'p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs text-purple-800 animate-fade-in';
+      translationBannerText.innerHTML = `<i data-lucide="loader-2" class="animate-spin h-4 w-4 inline mr-1.5 text-purple-600"></i> AI (Gemini Flash) កំពុងបកប្រែ Subtitles មកជាភាសាខ្មែរ... សូមរង់ចាំបន្តិច`;
+      lucide.createIcons();
+
+      const apiKey1 = apiKeyInput1.value.trim();
+      const apiKey2 = apiKeyInput2.value.trim();
+
+      try {
+        const resp = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key-1': apiKey1,
+            'x-api-key-2': apiKey2,
+            'x-api-key': apiKey1 || apiKey2,
+            'x-client-id': clientId
+          },
+          body: JSON.stringify({ srt: originalSrt })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || 'ការបកប្រែបានបរាជ័យ។');
+        }
+
+        khmerSrt = data.translatedSrt;
+        currentTab = 'khmer';
+        khmerBadge.classList.remove('hidden');
+        updateViewer();
+
+        translationBanner.className = 'p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-800 animate-fade-in';
+        translationBannerText.innerHTML = `<i data-lucide="check-circle-2" class="h-4 w-4 inline mr-1.5 text-emerald-600"></i> បានបកប្រែជាភាសាខ្មែរជោគជ័យ! អ្នកអាច Copy ឬ Download បាន។`;
+        lucide.createIcons();
+
+        translateBtnText.textContent = 'បានបកប្រែរួច (View Khmer)';
+
+        setTimeout(() => {
+          translationBanner.classList.add('hidden');
+        }, 5000);
+
+      } catch (err) {
+        console.error('Translation error:', err);
+        translationBanner.className = 'p-3 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between text-xs text-red-800 animate-fade-in';
+        translationBannerText.innerHTML = `<i data-lucide="alert-circle" class="h-4 w-4 inline mr-1.5 text-red-600"></i> ការបកប្រែមានបញ្ហា៖ ${err.message || 'សូមព្យាយាមម្តងទៀត'}`;
+        lucide.createIcons();
+        translateBtnText.textContent = 'បកប្រែជាភាសាខ្មែរ (សាកម្តងទៀត)';
+      } finally {
+        translateBtn.disabled = false;
+        translateBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+      }
+    });
+
+    // Helper to extract dialogue text only (strips numbers and timestamps)
+    function extractTextOnly(srt) {
+      if (!srt) return '';
+      const lines = srt.replace(/\r\n/g, '\n').split('\n');
+      const textLines = [];
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/^\d+$/.test(trimmed)) continue; // Sequence number
+        if (trimmed.includes('-->')) continue; // Timestamp range
+        textLines.push(trimmed);
+      }
+      return textLines.join('\n');
+    }
+
+    // Helper for reliable clipboard copy across mobile and desktop
+    function copyStringToClipboard(text, onSuccess) {
+      if (!text) return;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => fallbackCopy(text, onSuccess));
+      } else {
+        fallbackCopy(text, onSuccess);
+      }
+    }
+
+    function fallbackCopy(stringToCopy, onSuccess) {
+      const textArea = document.createElement('textarea');
+      textArea.value = stringToCopy;
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        const successful = document.execCommand('copy');
+        if (successful && onSuccess) onSuccess();
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+      document.body.removeChild(textArea);
+    }
+
+    // Copy Full SRT button (with timecodes)
+    copyBtn.addEventListener('click', () => {
+      const text = srtViewer.value;
+      if (!text) return;
+      copyStringToClipboard(text, () => {
+        const oldHtml = copyBtn.innerHTML;
+        copyBtn.innerHTML = `<i data-lucide="check" class="h-3.5 w-3.5 text-emerald-600"></i> <span>បាន Copy SRT រួចរាល់!</span>`;
+        copyBtn.classList.add('bg-emerald-100', 'border-emerald-400');
+        lucide.createIcons();
+        setTimeout(() => {
+          copyBtn.innerHTML = oldHtml;
+          copyBtn.classList.remove('bg-emerald-100', 'border-emerald-400');
+          lucide.createIcons();
+        }, 2000);
+      });
+    });
+
+    // Copy Text Only button (No timestamps)
+    copyTextOnlyBtn.addEventListener('click', () => {
+      const text = srtViewer.value;
+      if (!text) return;
+      const plainText = extractTextOnly(text);
+      copyStringToClipboard(plainText, () => {
+        const oldHtml = copyTextOnlyBtn.innerHTML;
+        copyTextOnlyBtn.innerHTML = `<i data-lucide="check" class="h-3.5 w-3.5 text-emerald-600"></i> <span>បាន Copy អត្ថបទរួចរាល់!</span>`;
+        copyTextOnlyBtn.classList.add('bg-emerald-100', 'border-emerald-400', 'text-emerald-700');
+        lucide.createIcons();
+        setTimeout(() => {
+          copyTextOnlyBtn.innerHTML = oldHtml;
+          copyTextOnlyBtn.classList.remove('bg-emerald-100', 'border-emerald-400', 'text-emerald-700');
+          lucide.createIcons();
+        }, 2000);
+      });
+    });
+
     // Download SRT trigger function
     function downloadSRT(text, filename) {
       const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -665,72 +942,9 @@
     // Download button event listener
     downloadBtn.addEventListener('click', () => {
       const text = srtViewer.value;
-      const filename = resultFileName.textContent;
+      const filename = resultFileName.textContent || `${baseFileName}.srt`;
       if (text) {
         downloadSRT(text, filename);
-      }
-    });
-
-    // Copy text event listener with HTTP secure/non-secure fallback
-    copyBtn.addEventListener('click', () => {
-      const text = srtViewer.value;
-      if (!text) return;
-
-      let successful = false;
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(text).then(() => {
-            handleCopySuccess();
-          }).catch(err => {
-            console.warn('Async clipboard write failed, trying fallback...', err);
-            fallbackCopy(text);
-          });
-          return;
-        } else {
-          fallbackCopy(text);
-        }
-      } catch (err) {
-        console.error('Copy failed: ', err);
-        alert('សូមចម្លងអត្ថបទដោយផ្ទាល់ពីប្រអប់ Subtitle!');
-      }
-
-      function fallbackCopy(stringToCopy) {
-        const textArea = document.createElement("textarea");
-        textArea.value = stringToCopy;
-        textArea.style.top = "0";
-        textArea.style.left = "0";
-        textArea.style.position = "fixed";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
-        try {
-          successful = document.execCommand('copy');
-        } catch (err) {
-          console.error('Fallback execCommand copy failed:', err);
-        }
-        
-        document.body.removeChild(textArea);
-        if (successful) {
-          handleCopySuccess();
-        } else {
-          alert('សូមចម្លងអត្ថបទដោយផ្ទាល់ពីប្រអប់ Subtitle!');
-        }
-      }
-
-      function handleCopySuccess() {
-        const originalText = copyBtn.innerHTML;
-        copyBtn.innerHTML = `<i data-lucide="check" class="h-3.5 w-3.5 text-white animate-pulse"></i> <span>Copied!</span>`;
-        copyBtn.classList.remove('from-emerald-600', 'to-teal-600', 'hover:from-emerald-500', 'hover:to-teal-500');
-        copyBtn.classList.add('from-emerald-500', 'to-teal-500');
-        lucide.createIcons();
-
-        setTimeout(() => {
-          copyBtn.innerHTML = originalText;
-          copyBtn.classList.add('from-emerald-600', 'to-teal-600', 'hover:from-emerald-500', 'hover:to-teal-500');
-          copyBtn.classList.remove('from-emerald-500', 'to-teal-500');
-          lucide.createIcons();
-        }, 2000);
       }
     });
   </script>

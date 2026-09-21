@@ -155,7 +155,8 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Rate Limiter: Max 30 requests per 24 hours per IP for shared pool
@@ -526,14 +527,14 @@ function parseSrt(srtText) {
 // Helper to translate array of strings in chunks using Gemini JSON mode with model fallback
 async function translateArray(texts, apiKey) {
   const ai = new GoogleGenAI({ apiKey });
-  const chunkSize = 20;
+  const chunkSize = 25;
   const translated = [];
   
   for (let i = 0; i < texts.length; i += chunkSize) {
     const chunk = texts.slice(i, i + chunkSize);
     console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)}...`);
     
-    const prompt = `You are a professional subtitle translator. Translate the following JSON array of subtitle lines into natural Khmer. Keep the exact same array length and order. Output ONLY a valid JSON array of strings without markdown formatting.\n\n${JSON.stringify(chunk)}`;
+    const prompt = `You are a professional subtitle translator. Translate the following JSON array of subtitle lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, and meaning. Keep the exact same array length and order. Output ONLY a valid JSON array of strings without markdown formatting.\n\n${JSON.stringify(chunk)}`;
     
     const response = await generateWithModelFallback(ai, {
       contents: [{ text: prompt }],
@@ -553,7 +554,10 @@ async function translateArray(texts, apiKey) {
       chunkTranslated = chunk; // Fallback to original
     }
     
-    translated.push(...chunkTranslated);
+    // Safely pad to exact chunk length to preserve cue alignment
+    for (let j = 0; j < chunk.length; j++) {
+      translated.push((chunkTranslated && chunkTranslated[j]) ? String(chunkTranslated[j]) : chunk[j]);
+    }
   }
   
   return translated;
