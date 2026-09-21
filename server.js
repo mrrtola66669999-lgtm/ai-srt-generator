@@ -17,7 +17,48 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_GEMINI_KEY = Buffer.from('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=', 'base64').toString('utf8');
+// =========================================================================
+// 🔑 GOOGLE GEMINI API KEYS POOL (ROTATION & LOAD BALANCING SYSTEM)
+// =========================================================================
+// លោកអ្នកអាចបន្ថែម API Keys ទាំង ១០ (ឬច្រើនជាងនេះ) នៅខាងក្រោមនេះ៖
+// ឬកំណត់ក្នុង Render Environment Variables: GEMINI_API_KEYS="key1,key2,key3,..."
+const BUILTIN_KEYS_POOL = [
+  Buffer.from('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=', 'base64').toString('utf8'),
+  // ដាក់ Key ទី ២, ទី ៣... ទី ១០ នៅទីនេះ៖
+  // "AIzaSy...",
+  // "AIzaSy...",
+];
+
+/**
+ * Get all available API keys from Environment variables and built-in pool
+ * @returns {string[]}
+ */
+function getApiKeyPool() {
+  const envKeys = process.env.GEMINI_API_KEYS
+    ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()).filter(Boolean)
+    : [];
+  const singleEnv = process.env.GEMINI_API_KEY ? [process.env.GEMINI_API_KEY.trim()] : [];
+  
+  // Combine all keys, remove empty strings and duplicates
+  const combined = [...envKeys, ...singleEnv, ...BUILTIN_KEYS_POOL].filter(k => k && k.length > 5);
+  return Array.from(new Set(combined));
+}
+
+let keyRotationIndex = 0;
+
+/**
+ * Get next API key using Round-Robin rotation
+ * @returns {{ key: string, index: number, total: number } | null}
+ */
+function getNextPoolKey() {
+  const pool = getApiKeyPool();
+  if (pool.length === 0) return null;
+  const currentIndex = keyRotationIndex % pool.length;
+  const key = pool[currentIndex];
+  keyRotationIndex = (keyRotationIndex + 1) % pool.length;
+  return { key, index: currentIndex + 1, total: pool.length };
+}
+
 const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
 
 /**
@@ -56,13 +97,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate Limiter: Max 10 requests per 24 hours per IP
+// Rate Limiter: Max 30 requests per 24 hours per IP for shared pool
 const apiLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: 10, // Limit each IP to 10 requests per windowMs
-  message: { error: 'អ្នកបានអស់សិទ្ធិប្រើប្រាស់សម្រាប់ថ្ងៃនេះហើយ! សូមត្រលប់មកវិញនៅថ្ងៃស្អែក' },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  max: 30, // Limit each IP to 30 requests per windowMs
+  message: { error: 'អ្នកបានអស់សិទ្ធិប្រើប្រាស់សម្រាប់ថ្ងៃនេះហើយ! សូមត្រលប់មកវិញនៅថ្ងៃស្អែក ឬប្រើប្រាស់ API Key ផ្ទាល់ខ្លួន។' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Dynamic Rate Limiter: Bypasses the rate limit if the user provides their own API key
@@ -72,7 +113,6 @@ const dynamicRateLimiter = (req, res, next) => {
     // User provided their own API key, skip rate limit!
     return next();
   }
-  // No user API key, apply the 5-requests-per-day limit!
   apiLimiter(req, res, next);
 };
 
@@ -136,23 +176,25 @@ function compressAudio(inputPath, outputPath) {
   });
 }
 
+/**
+ * Check if an error message represents a quota or rate limit error
+ * @param {Error} error 
+ * @returns {boolean}
+ */
+function isQuotaError(error) {
+  const msg = (error && error.message) ? error.message.toLowerCase() : '';
+  return msg.includes('429') || 
+         msg.includes('quota') || 
+         msg.includes('rate limit') || 
+         msg.includes('resource_exhausted') || 
+         msg.includes('too many requests');
+}
+
 // Route to handle transcription
 app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (req, res) => {
-  let apiKey = req.headers['x-api-key'];
+  const userApiKey = req.headers['x-api-key'];
+  const isCustomUserKey = !!(userApiKey && userApiKey.trim().length > 0);
   
-  // If the user did not provide their own API Key, fall back to the default key
-  if (!apiKey || apiKey.trim().length === 0) {
-    apiKey = process.env.GEMINI_API_KEY || DEFAULT_GEMINI_KEY;
-  }
-  
-  if (!apiKey) {
-    // If we have an uploaded file, clean it up immediately
-    if (req.file) {
-      fs.unlink(req.file.path, () => {});
-    }
-    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
-  }
-
   if (!req.file) {
     return res.status(400).json({ error: 'No audio or video file was uploaded.' });
   }
@@ -173,95 +215,148 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
     fs.unlink(uploadedPath, () => {});
     return res.status(400).json({ error: 'មិនអាចពិនិត្យប្រវែងឯកសារបានទេ។ ឯកសារអាចមានបញ្ហាខូចខាត។' });
   }
-  
-  let googleFileUploaded = null;
-  let ai = null;
 
+  // 1. Convert to 64kbps MP3
   try {
     console.log(`Starting audio extraction/compression for: ${req.file.originalname}`);
-    // 1. Convert to 64kbps MP3
     await compressAudio(uploadedPath, compressedPath);
+  } catch (err) {
+    fs.unlink(uploadedPath, () => {});
+    return res.status(500).json({ error: 'Failed to compress audio file with FFmpeg.' });
+  }
 
-    // 2. Initialize Gemini API Client
-    ai = new GoogleGenAI({ apiKey });
+  // Determine candidate keys:
+  // If user provided their own key, only use that.
+  // Otherwise, use keys from the pool with rotation and smart auto-failover!
+  const pool = getApiKeyPool();
+  let candidateKeys = [];
 
-    console.log('Uploading compressed audio to Google Gen AI Files API...');
-    // 3. Upload file to Google Files API
-    googleFileUploaded = await ai.files.upload({
-      file: compressedPath,
-      mimeType: 'audio/mp3'
-    });
-    console.log(`Uploaded file resource name: ${googleFileUploaded.name}`);
-
-    // 4. Poll until the file becomes ACTIVE
-    let fileState = await ai.files.get({ name: googleFileUploaded.name });
-    console.log(`Initial file state: ${fileState.state}`);
+  if (isCustomUserKey) {
+    candidateKeys = [userApiKey.trim()];
+  } else {
+    if (pool.length === 0) {
+      fs.unlink(uploadedPath, () => {});
+      fs.unlink(compressedPath, () => {});
+      return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
+    }
+    // Pick keys starting from the current rotation index
+    const poolKeyObj = getNextPoolKey();
+    const startIndex = poolKeyObj ? (poolKeyObj.index - 1) : 0;
     
-    let attempts = 0;
-    const maxAttempts = 30; // 60 seconds max wait time
-    while (fileState.state === 'PROCESSING' && attempts < maxAttempts) {
-      console.log(`File is still processing... attempt ${attempts + 1}/${maxAttempts}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      fileState = await ai.files.get({ name: googleFileUploaded.name });
-      attempts++;
+    // Arrange keys starting from startIndex and wrapping around
+    for (let i = 0; i < pool.length; i++) {
+      candidateKeys.push(pool[(startIndex + i) % pool.length]);
     }
+    console.log(`Using Key Pool: Rotating to Key #${startIndex + 1} of ${pool.length}`);
+  }
 
-    if (fileState.state !== 'ACTIVE') {
-      throw new Error(`File processing failed. Final state is ${fileState.state}`);
-    }
+  let lastError = null;
+  let srtTextResult = null;
 
-    console.log('File is ACTIVE. Generating SRT subtitles with Gemini fallback models...');
-    
-    // 5. Ask Gemini to generate the SRT content with multi-model fallback
-    const response = await generateWithModelFallback(ai, {
-      contents: [
-        {
-          fileData: {
-            mimeType: fileState.mimeType,
-            fileUri: fileState.uri
-          }
-        }
-      ],
-      config: {
-        systemInstruction: "Listen to this audio and generate a precise SRT subtitle file. Output ONLY the raw SRT format text. Do not include markdown code blocks (```srt) or explanations.",
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-        ]
-      }
-    });
+  // Try candidate keys (auto-failover if quota exceeded)
+  for (let keyIdx = 0; keyIdx < candidateKeys.length; keyIdx++) {
+    const currentApiKey = candidateKeys[keyIdx];
+    let googleFileUploaded = null;
+    let ai = null;
 
-    const srtText = response.text;
-    if (!srtText) {
-      throw new Error('Gemini did not return any subtitle text.');
-    }
+    try {
+      console.log(`Attempting transcription with ${isCustomUserKey ? 'custom user key' : `Pool Key [${keyIdx + 1}/${candidateKeys.length}]`}`);
+      
+      ai = new GoogleGenAI({ apiKey: currentApiKey });
 
-    console.log('Subtitle generation complete!');
-    return res.json({ srt: srtText, filename: `${path.parse(req.file.originalname).name}.srt` });
-
-  } catch (error) {
-    console.error('Transcription error details:', error);
-    return res.status(500).json({ error: error.message || 'An error occurred during transcription.' });
-  } finally {
-    // 6. Cleanup local temporary files
-    fs.unlink(uploadedPath, (err) => {
-      if (err) console.error(`Error deleting uploaded file ${uploadedPath}:`, err);
-    });
-    fs.unlink(compressedPath, (err) => {
-      if (err) console.error(`Error deleting compressed file ${compressedPath}:`, err);
-    });
-
-    // 7. Cleanup Gemini File API storage
-    if (googleFileUploaded && ai) {
-      console.log('Cleaning up files from Gemini API storage...');
-      ai.files.delete({ name: googleFileUploaded.name }).then(() => {
-        console.log(`Successfully deleted ${googleFileUploaded.name} from Gemini API`);
-      }).catch((err) => {
-        console.error(`Failed to delete ${googleFileUploaded.name} from Gemini API:`, err);
+      // Upload file to Google Files API
+      googleFileUploaded = await ai.files.upload({
+        file: compressedPath,
+        mimeType: 'audio/mp3'
       });
+      console.log(`Uploaded file resource name: ${googleFileUploaded.name}`);
+
+      // Poll until the file becomes ACTIVE
+      let fileState = await ai.files.get({ name: googleFileUploaded.name });
+      let attempts = 0;
+      const maxAttempts = 30;
+      while (fileState.state === 'PROCESSING' && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        fileState = await ai.files.get({ name: googleFileUploaded.name });
+        attempts++;
+      }
+
+      if (fileState.state !== 'ACTIVE') {
+        throw new Error(`File processing failed. Final state is ${fileState.state}`);
+      }
+
+      console.log('File is ACTIVE. Generating SRT subtitles with Gemini fallback models...');
+      
+      const response = await generateWithModelFallback(ai, {
+        contents: [
+          {
+            fileData: {
+              mimeType: fileState.mimeType,
+              fileUri: fileState.uri
+            }
+          }
+        ],
+        config: {
+          systemInstruction: "Listen to this audio and generate a precise SRT subtitle file. Output ONLY the raw SRT format text. Do not include markdown code blocks (```srt) or explanations.",
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+          ]
+        }
+      });
+
+      const srtText = response.text;
+      if (!srtText) {
+        throw new Error('Gemini did not return any subtitle text.');
+      }
+
+      srtTextResult = srtText;
+
+      // Clean up Gemini File API storage
+      try {
+        await ai.files.delete({ name: googleFileUploaded.name });
+      } catch (delErr) {
+        console.warn(`Could not delete file ${googleFileUploaded.name}:`, delErr.message);
+      }
+
+      // Success! Break loop
+      break;
+
+    } catch (err) {
+      console.error(`Transcription attempt failed with key #${keyIdx + 1}:`, err.message);
+      lastError = err;
+
+      // Cleanup uploaded file from Google File API on error
+      if (googleFileUploaded && ai) {
+        try {
+          await ai.files.delete({ name: googleFileUploaded.name });
+        } catch (_) {}
+      }
+
+      // If it's a quota error and we have more keys in the pool, continue to next key!
+      if (!isCustomUserKey && isQuotaError(err) && (keyIdx + 1 < candidateKeys.length)) {
+        console.warn(`Key #${keyIdx + 1} hit rate limit / quota! Auto-switching to next Key in pool...`);
+        continue;
+      }
+
+      // If user's own key or non-quota error, don't loop endlessly
+      if (isCustomUserKey) {
+        break;
+      }
     }
+  }
+
+  // Always cleanup local temporary files
+  fs.unlink(uploadedPath, () => {});
+  fs.unlink(compressedPath, () => {});
+
+  if (srtTextResult) {
+    console.log('Subtitle generation successfully completed!');
+    return res.json({ srt: srtTextResult, filename: `${path.parse(req.file.originalname).name}.srt` });
+  } else {
+    return res.status(500).json({ error: (lastError && lastError.message) || 'An error occurred during transcription.' });
   }
 });
 
@@ -288,45 +383,29 @@ function parseSrt(srtText) {
 // Helper to translate array of strings in chunks using Gemini JSON mode with model fallback
 async function translateArray(texts, apiKey) {
   const ai = new GoogleGenAI({ apiKey });
+  const chunkSize = 20;
   const translated = [];
-  const chunkSize = 50;
   
   for (let i = 0; i < texts.length; i += chunkSize) {
     const chunk = texts.slice(i, i + chunkSize);
-    console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} (${chunk.length} items)...`);
+    console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)}...`);
+    
+    const prompt = `You are a professional subtitle translator. Translate the following JSON array of subtitle lines into natural Khmer. Keep the exact same array length and order. Output ONLY a valid JSON array of strings without markdown formatting.\n\n${JSON.stringify(chunk)}`;
     
     const response = await generateWithModelFallback(ai, {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `You are a professional translator. Translate each string in the following JSON array of subtitles to Khmer. Keep the translation natural and matching the context of the story. Do not explain anything. Return ONLY a valid JSON array of translated strings in the exact same order.
-              
-Input JSON:
-${JSON.stringify(chunk)}`
-            }
-          ]
-        }
-      ],
+      contents: [{ text: prompt }],
       config: {
-        responseMimeType: 'application/json',
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-        ]
+        responseMimeType: "application/json"
       }
     });
-    
-    let chunkTranslated;
+
+    let chunkTranslated = [];
     try {
       chunkTranslated = JSON.parse(response.text);
       if (!Array.isArray(chunkTranslated)) {
         throw new Error('Response is not an array.');
       }
-    } catch (e) {
+    } catch (parseError) {
       console.error('Gemini chunk translation failed to parse JSON. Raw response:', response.text);
       chunkTranslated = chunk; // Fallback to original
     }
@@ -340,18 +419,19 @@ ${JSON.stringify(chunk)}`
 // Endpoint to translate SRT content to Khmer
 app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
   const { srt } = req.body;
-  let apiKey = req.headers['x-api-key'];
+  let userApiKey = req.headers['x-api-key'];
 
   if (!srt) {
     return res.status(400).json({ error: 'No SRT content provided for translation.' });
   }
 
-  // Fallback to default API Key if not provided by client
-  if (!apiKey || apiKey.trim().length === 0) {
-    apiKey = process.env.GEMINI_API_KEY || DEFAULT_GEMINI_KEY;
+  let activeApiKey = userApiKey;
+  if (!activeApiKey || activeApiKey.trim().length === 0) {
+    const poolKeyObj = getNextPoolKey();
+    activeApiKey = poolKeyObj ? poolKeyObj.key : null;
   }
 
-  if (!apiKey) {
+  if (!activeApiKey) {
     return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
   }
 
@@ -363,7 +443,7 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
     }
 
     const textsToTranslate = cues.map(c => c.text);
-    const translatedTexts = await translateArray(textsToTranslate, apiKey);
+    const translatedTexts = await translateArray(textsToTranslate, activeApiKey);
 
     const srtLines = [];
     for (let i = 0; i < cues.length; i++) {
@@ -402,8 +482,10 @@ function getLocalIpAddresses() {
 
 // Start Server listening on the configured PORT (process.env.PORT or 3000)
 app.listen(PORT, () => {
+  const pool = getApiKeyPool();
   console.log(`\n======================================================`);
-  console.log(`Server is running!`);
+  console.log(`🚀 Server is running!`);
+  console.log(`🔑 API Keys Pool: ${pool.length} active key(s) loaded.`);
   console.log(`- Local Access:   http://localhost:${PORT}`);
   
   const ips = getLocalIpAddresses();
@@ -411,8 +493,6 @@ app.listen(PORT, () => {
     ips.forEach(ip => {
       console.log(`- Mobile Access:  http://${ip}:${PORT} (Connect phone to the SAME Wi-Fi)`);
     });
-  } else {
-    console.log(`- Mobile Access:  Ensure phone is on the same Wi-Fi network.`);
   }
   console.log(`======================================================\n`);
 });
