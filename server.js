@@ -62,19 +62,66 @@ function getApiKeyPool() {
   return Array.from(new Set(combined));
 }
 
-let keyRotationIndex = 0;
+// =========================================================================
+// 🎯 DEDICATED DAILY KEY ASSIGNMENT PER USER SYSTEM
+// =========================================================================
+// User ទី ១ មកដល់ -> ប្រើបានតែ Key ទី ១ ក្នុងមួយថ្ងៃ
+// User ទី ២ មកដល់ -> ប្រើបានតែ Key ទី ២ ក្នុងមួយថ្ងៃ
+// បានន័យថាមួយ User ណាបើប្រើ ត្រូវផ្តល់ Key ឱ្យតែមួយទេក្នុងមួយថ្ងៃ
+// ប៉ុន្តែប្រសិនបើ User ដាក់ Key ផ្ទាល់ខ្លួន -> ត្រូវចាប់យក Key របស់ User ផ្ទាល់សិន!
+
+const userDailyKeyMap = new Map(); // Key: "YYYY-MM-DD:user_identifier" -> { key, keyNumber, userNumber }
+let nextAssignIndex = 0;
+let currentTrackedDate = new Date().toISOString().split('T')[0];
 
 /**
- * Get next API key using Round-Robin rotation
- * @returns {{ key: string, index: number, total: number } | null}
+ * Assign or retrieve the dedicated single key for a user for today
+ * @param {string} clientId 
+ * @param {string} clientIp 
+ * @returns {{ key: string, keyNumber: number, userNumber: number, totalKeys: number } | null}
  */
-function getNextPoolKey() {
+function getDedicatedKeyForUser(clientId, clientIp) {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Reset assignments when a new day starts
+  if (today !== currentTrackedDate) {
+    userDailyKeyMap.clear();
+    nextAssignIndex = 0;
+    currentTrackedDate = today;
+    console.log(`🌅 New day started (${today}): Resetting all user key assignments.`);
+  }
+
   const pool = getApiKeyPool();
   if (pool.length === 0) return null;
-  const currentIndex = keyRotationIndex % pool.length;
-  const key = pool[currentIndex];
-  keyRotationIndex = (keyRotationIndex + 1) % pool.length;
-  return { key, index: currentIndex + 1, total: pool.length };
+
+  const rawIp = clientIp ? clientIp.split(',')[0].trim() : '';
+  const userIdentifier = clientId || rawIp || 'guest_user';
+  const sessionKey = `${today}:${userIdentifier}`;
+
+  // If this user already has an assigned key for today, return it!
+  if (userDailyKeyMap.has(sessionKey)) {
+    const existing = userDailyKeyMap.get(sessionKey);
+    console.log(`👤 Existing User #${existing.userNumber} (${userIdentifier.slice(0, 16)}) -> Using their dedicated Key #${existing.keyNumber} for today`);
+    return existing;
+  }
+
+  // New user today: Assign the next dedicated key in line (User 1 -> Key 1, User 2 -> Key 2...)
+  const assignedIndex = nextAssignIndex % pool.length;
+  const assignedKey = pool[assignedIndex];
+  nextAssignIndex++;
+
+  const userNumber = userDailyKeyMap.size + 1;
+  const newAssignment = {
+    key: assignedKey,
+    keyNumber: assignedIndex + 1,
+    userNumber: userNumber,
+    totalKeys: pool.length
+  };
+
+  userDailyKeyMap.set(sessionKey, newAssignment);
+  console.log(`✨ New User #${userNumber} (${userIdentifier.slice(0, 16)}) arrived -> Assigned dedicated Key #${newAssignment.keyNumber} for today (${today})`);
+
+  return newAssignment;
 }
 
 const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
@@ -210,9 +257,6 @@ function isQuotaError(error) {
 
 // Route to handle transcription
 app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (req, res) => {
-  const userApiKey = req.headers['x-api-key'];
-  const isCustomUserKey = !!(userApiKey && userApiKey.trim().length > 0);
-  
   if (!req.file) {
     return res.status(400).json({ error: 'No audio or video file was uploaded.' });
   }
@@ -243,44 +287,39 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
     return res.status(500).json({ error: 'Failed to compress audio file with FFmpeg.' });
   }
 
-  // Determine candidate keys:
-  // If user provided their own key, only use that.
-  // Otherwise, use keys from the pool with rotation and smart auto-failover!
-  const pool = getApiKeyPool();
-  let candidateKeys = [];
+  // 🔑 KEY SELECTION:
+  // 1. ប្រសិនបើ User ដាក់ Key ផ្ទាល់ខ្លួន -> ត្រូវចាប់យក Key របស់ User ផ្ទាល់សិន!
+  // 2. បើគ្មាន Key ផ្ទាល់ខ្លួន -> User ទី ១ ប្រើ Key ១, User ទី ២ ប្រើ Key ២ (Dedicated 1 Key per User for the day)
+  const userCustomKey = req.headers['x-api-key'];
+  const clientId = req.headers['x-client-id'];
+  const clientIp = req.headers['x-forwarded-for'] || req.ip;
+
+  let activeApiKey = null;
+  let keyDescription = '';
+  const isCustomUserKey = !!(userCustomKey && userCustomKey.trim().length > 0);
 
   if (isCustomUserKey) {
-    candidateKeys = [userApiKey.trim()];
+    activeApiKey = userCustomKey.trim();
+    keyDescription = "User's OWN Personal API Key";
+    console.log(`🔑 [Priority 1] Using User's OWN personal API key directly!`);
   } else {
-    if (pool.length === 0) {
+    const assigned = getDedicatedKeyForUser(clientId, clientIp);
+    if (!assigned) {
       fs.unlink(uploadedPath, () => {});
       fs.unlink(compressedPath, () => {});
       return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
     }
-    // Pick keys starting from the current rotation index
-    const poolKeyObj = getNextPoolKey();
-    const startIndex = poolKeyObj ? (poolKeyObj.index - 1) : 0;
-    
-    // Arrange keys starting from startIndex and wrapping around
-    for (let i = 0; i < pool.length; i++) {
-      candidateKeys.push(pool[(startIndex + i) % pool.length]);
-    }
-    console.log(`Using Key Pool: Rotating to Key #${startIndex + 1} of ${pool.length}`);
+    activeApiKey = assigned.key;
+    keyDescription = `Dedicated Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`;
+    console.log(`🔑 [Priority 2] Using ${keyDescription}`);
   }
 
-  let lastError = null;
-  let srtTextResult = null;
+  let googleFileUploaded = null;
+  let ai = null;
 
-  // Try candidate keys (auto-failover if quota exceeded)
-  for (let keyIdx = 0; keyIdx < candidateKeys.length; keyIdx++) {
-    const currentApiKey = candidateKeys[keyIdx];
-    let googleFileUploaded = null;
-    let ai = null;
-
-    try {
-      console.log(`Attempting transcription with ${isCustomUserKey ? 'custom user key' : `Pool Key [${keyIdx + 1}/${candidateKeys.length}]`}`);
-      
-      ai = new GoogleGenAI({ apiKey: currentApiKey });
+  try {
+    console.log(`Starting transcription request with ${keyDescription}...`);
+    ai = new GoogleGenAI({ apiKey: activeApiKey });
 
       // Upload file to Google Files API
       googleFileUploaded = await ai.files.upload({
@@ -330,8 +369,6 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         throw new Error('Gemini did not return any subtitle text.');
       }
 
-      srtTextResult = srtText;
-
       // Clean up Gemini File API storage
       try {
         await ai.files.delete({ name: googleFileUploaded.name });
@@ -339,12 +376,11 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         console.warn(`Could not delete file ${googleFileUploaded.name}:`, delErr.message);
       }
 
-      // Success! Break loop
-      break;
+      console.log('Subtitle generation successfully completed!');
+      return res.json({ srt: srtText, filename: `${path.parse(req.file.originalname).name}.srt` });
 
     } catch (err) {
-      console.error(`Transcription attempt failed with key #${keyIdx + 1}:`, err.message);
-      lastError = err;
+      console.error(`Transcription failed with ${keyDescription}:`, err.message);
 
       // Cleanup uploaded file from Google File API on error
       if (googleFileUploaded && ai) {
@@ -353,29 +389,18 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         } catch (_) {}
       }
 
-      // If it's a quota error and we have more keys in the pool, continue to next key!
-      if (!isCustomUserKey && isQuotaError(err) && (keyIdx + 1 < candidateKeys.length)) {
-        console.warn(`Key #${keyIdx + 1} hit rate limit / quota! Auto-switching to next Key in pool...`);
-        continue;
+      if (isQuotaError(err)) {
+        return res.status(429).json({ 
+          error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នកដើម្បីបន្តប្រើប្រាស់។' 
+        });
       }
 
-      // If user's own key or non-quota error, don't loop endlessly
-      if (isCustomUserKey) {
-        break;
-      }
+      return res.status(500).json({ error: err.message || 'An error occurred during transcription.' });
+    } finally {
+      // Always cleanup local temporary files
+      fs.unlink(uploadedPath, () => {});
+      fs.unlink(compressedPath, () => {});
     }
-  }
-
-  // Always cleanup local temporary files
-  fs.unlink(uploadedPath, () => {});
-  fs.unlink(compressedPath, () => {});
-
-  if (srtTextResult) {
-    console.log('Subtitle generation successfully completed!');
-    return res.json({ srt: srtTextResult, filename: `${path.parse(req.file.originalname).name}.srt` });
-  } else {
-    return res.status(500).json({ error: (lastError && lastError.message) || 'An error occurred during transcription.' });
-  }
 });
 
 // Helper to parse SRT string into cue objects
@@ -444,9 +469,12 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
   }
 
   let activeApiKey = userApiKey;
+  const clientId = req.headers['x-client-id'];
+  const clientIp = req.headers['x-forwarded-for'] || req.ip;
+
   if (!activeApiKey || activeApiKey.trim().length === 0) {
-    const poolKeyObj = getNextPoolKey();
-    activeApiKey = poolKeyObj ? poolKeyObj.key : null;
+    const assigned = getDedicatedKeyForUser(clientId, clientIp);
+    activeApiKey = assigned ? assigned.key : null;
   }
 
   if (!activeApiKey) {

@@ -327,17 +327,19 @@
     let selectedFile = null;
     let progressTimer = null;
 
-    // Load saved API key from localStorage on start or pre-fill default working key
+    // Generate or retrieve persistent Client ID for dedicated daily key assignment
+    let clientId = localStorage.getItem('srt_client_id');
+    if (!clientId) {
+      clientId = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('srt_client_id', clientId);
+    }
+
+    // Load user's own saved API key from localStorage if they previously saved one
     window.addEventListener('load', () => {
       const savedKey = localStorage.getItem('google_gemini_api_key');
       if (savedKey) {
         apiKeyInput.value = savedKey;
         saveKeyCheckbox.checked = true;
-      } else {
-        const defaultKey = atob('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=');
-        apiKeyInput.value = defaultKey;
-        saveKeyCheckbox.checked = true;
-        localStorage.setItem('google_gemini_api_key', defaultKey);
       }
     });
 
@@ -532,7 +534,8 @@
         const response = await fetch('/api/transcribe', {
           method: 'POST',
           headers: {
-            'x-api-key': apiKey
+            'x-api-key': apiKey,
+            'x-client-id': clientId
           },
           body: formData
         });
