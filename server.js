@@ -287,39 +287,49 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
     return res.status(500).json({ error: 'Failed to compress audio file with FFmpeg.' });
   }
 
-  // 🔑 KEY SELECTION:
-  // 1. ប្រសិនបើ User ដាក់ Key ផ្ទាល់ខ្លួន -> ត្រូវចាប់យក Key របស់ User ផ្ទាល់សិន!
-  // 2. បើគ្មាន Key ផ្ទាល់ខ្លួន -> User ទី ១ ប្រើ Key ១, User ទី ២ ប្រើ Key ២ (Dedicated 1 Key per User for the day)
+  // 🔑 CANDIDATE KEYS FOR THIS USER:
+  // 1. ត្រូវប្រើ Key របស់ User ដែលបានដាក់មុន (Try User's own key first)
+  // 2. ពេលអស់ Credit/Quota របស់ User ផ្ទាល់ -> ស្វ័យប្រវត្តិចូលប្រើ Key របស់ Server ដែលបានចែកជូន User នោះសម្រាប់ថ្ងៃនេះ!
   const userCustomKey = req.headers['x-api-key'];
   const clientId = req.headers['x-client-id'];
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
-  let activeApiKey = null;
-  let keyDescription = '';
-  const isCustomUserKey = !!(userCustomKey && userCustomKey.trim().length > 0);
+  const candidateKeys = [];
 
-  if (isCustomUserKey) {
-    activeApiKey = userCustomKey.trim();
-    keyDescription = "User's OWN Personal API Key";
-    console.log(`🔑 [Priority 1] Using User's OWN personal API key directly!`);
-  } else {
-    const assigned = getDedicatedKeyForUser(clientId, clientIp);
-    if (!assigned) {
-      fs.unlink(uploadedPath, () => {});
-      fs.unlink(compressedPath, () => {});
-      return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
-    }
-    activeApiKey = assigned.key;
-    keyDescription = `Dedicated Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`;
-    console.log(`🔑 [Priority 2] Using ${keyDescription}`);
+  // Step 1: User's personal key (if provided)
+  if (userCustomKey && userCustomKey.trim().length > 0) {
+    candidateKeys.push({
+      apiKey: userCustomKey.trim(),
+      description: "User's OWN Personal API Key",
+      isUserKey: true
+    });
   }
 
-  let googleFileUploaded = null;
-  let ai = null;
+  // Step 2: Dedicated Key assigned to this user from Server pool
+  const assigned = getDedicatedKeyForUser(clientId, clientIp);
+  if (assigned) {
+    candidateKeys.push({
+      apiKey: assigned.key,
+      description: `Dedicated Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`,
+      isUserKey: false
+    });
+  } else if (candidateKeys.length === 0) {
+    fs.unlink(uploadedPath, () => {});
+    fs.unlink(compressedPath, () => {});
+    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
+  }
 
-  try {
-    console.log(`Starting transcription request with ${keyDescription}...`);
-    ai = new GoogleGenAI({ apiKey: activeApiKey });
+  let lastError = null;
+  let srtTextResult = null;
+
+  for (let i = 0; i < candidateKeys.length; i++) {
+    const { apiKey, description, isUserKey } = candidateKeys[i];
+    let googleFileUploaded = null;
+    let ai = null;
+
+    try {
+      console.log(`[Attempt ${i + 1}/${candidateKeys.length}] Processing with ${description}...`);
+      ai = new GoogleGenAI({ apiKey });
 
       // Upload file to Google Files API
       googleFileUploaded = await ai.files.upload({
@@ -328,7 +338,7 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
       });
       console.log(`Uploaded file resource name: ${googleFileUploaded.name}`);
 
-      // Poll until the file becomes ACTIVE
+      // Poll until ACTIVE
       let fileState = await ai.files.get({ name: googleFileUploaded.name });
       let attempts = 0;
       const maxAttempts = 30;
@@ -342,8 +352,8 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         throw new Error(`File processing failed. Final state is ${fileState.state}`);
       }
 
-      console.log('File is ACTIVE. Generating SRT subtitles with Gemini fallback models...');
-      
+      console.log('File is ACTIVE. Generating SRT subtitles with Gemini...');
+
       const response = await generateWithModelFallback(ai, {
         contents: [
           {
@@ -369,6 +379,8 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         throw new Error('Gemini did not return any subtitle text.');
       }
 
+      srtTextResult = srtText;
+
       // Clean up Gemini File API storage
       try {
         await ai.files.delete({ name: googleFileUploaded.name });
@@ -376,31 +388,45 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         console.warn(`Could not delete file ${googleFileUploaded.name}:`, delErr.message);
       }
 
-      console.log('Subtitle generation successfully completed!');
-      return res.json({ srt: srtText, filename: `${path.parse(req.file.originalname).name}.srt` });
+      console.log(`Subtitle generation successfully completed with ${description}!`);
+      break; // Success!
 
     } catch (err) {
-      console.error(`Transcription failed with ${keyDescription}:`, err.message);
+      console.error(`Attempt failed with ${description}:`, err.message);
+      lastError = err;
 
-      // Cleanup uploaded file from Google File API on error
+      // Clean up uploaded file from Gemini on failure
       if (googleFileUploaded && ai) {
         try {
           await ai.files.delete({ name: googleFileUploaded.name });
         } catch (_) {}
       }
 
-      if (isQuotaError(err)) {
-        return res.status(429).json({ 
-          error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នកដើម្បីបន្តប្រើប្រាស់។' 
-        });
+      // If user's own key ran out of credit/quota and we have a fallback pool key available:
+      if (isUserKey && isQuotaError(err) && (i + 1 < candidateKeys.length)) {
+        console.warn(`⚠️ User's personal API Key ran out of credit/quota (429)! Automatically switching to server's dedicated assigned Key...`);
+        continue; // Try next key (the assigned pool key)!
       }
 
-      return res.status(500).json({ error: err.message || 'An error occurred during transcription.' });
-    } finally {
-      // Always cleanup local temporary files
-      fs.unlink(uploadedPath, () => {});
-      fs.unlink(compressedPath, () => {});
+      // Otherwise break
+      break;
     }
+  }
+
+  // Always cleanup local temporary files
+  fs.unlink(uploadedPath, () => {});
+  fs.unlink(compressedPath, () => {});
+
+  if (srtTextResult) {
+    return res.json({ srt: srtTextResult, filename: `${path.parse(req.file.originalname).name}.srt` });
+  } else {
+    if (isQuotaError(lastError)) {
+      return res.status(429).json({ 
+        error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ថ្មីដើម្បីបន្តប្រើប្រាស់។' 
+      });
+    }
+    return res.status(500).json({ error: (lastError && lastError.message) || 'An error occurred during transcription.' });
+  }
 });
 
 // Helper to parse SRT string into cue objects
@@ -468,28 +494,48 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
     return res.status(400).json({ error: 'No SRT content provided for translation.' });
   }
 
-  let activeApiKey = userApiKey;
-  const clientId = req.headers['x-client-id'];
-  const clientIp = req.headers['x-forwarded-for'] || req.ip;
-
-  if (!activeApiKey || activeApiKey.trim().length === 0) {
-    const assigned = getDedicatedKeyForUser(clientId, clientIp);
-    activeApiKey = assigned ? assigned.key : null;
+  const translateCandidates = [];
+  if (userApiKey && userApiKey.trim().length > 0) {
+    translateCandidates.push({ key: userApiKey.trim(), isUserKey: true });
+  }
+  const assigned = getDedicatedKeyForUser(clientId, clientIp);
+  if (assigned) {
+    translateCandidates.push({ key: assigned.key, isUserKey: false });
   }
 
-  if (!activeApiKey) {
+  if (translateCandidates.length === 0) {
     return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
   }
 
   try {
-    console.log('Initiating translation of SRT content to Khmer using Gemini fallback models...');
+    console.log('Initiating translation of SRT content to Khmer...');
     const cues = parseSrt(srt);
     if (cues.length === 0) {
       return res.status(400).json({ error: 'Could not parse any valid subtitle segments from the SRT content.' });
     }
 
     const textsToTranslate = cues.map(c => c.text);
-    const translatedTexts = await translateArray(textsToTranslate, activeApiKey);
+    let translatedTexts = null;
+    let lastError = null;
+
+    for (let i = 0; i < translateCandidates.length; i++) {
+      const candidate = translateCandidates[i];
+      try {
+        translatedTexts = await translateArray(textsToTranslate, candidate.key);
+        break;
+      } catch (err) {
+        lastError = err;
+        if (candidate.isUserKey && isQuotaError(err) && (i + 1 < translateCandidates.length)) {
+          console.warn('User key quota exceeded during translation! Auto-falling back to server dedicated key...');
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (!translatedTexts) {
+      throw lastError || new Error('Translation failed on all available keys.');
+    }
 
     const srtLines = [];
     for (let i = 0; i < cues.length; i++) {
