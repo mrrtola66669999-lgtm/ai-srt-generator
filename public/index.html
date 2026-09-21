@@ -119,11 +119,42 @@
 
         <form id="srtForm" class="space-y-6">
           
-          <!-- API Key Input -->
+          <!-- System Free Key Box -->
+          <div class="space-y-1.5 p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+              <label class="text-xs font-bold text-zinc-700 flex items-center gap-1.5">
+                <i data-lucide="shield-check" class="h-4 w-4 text-emerald-600"></i>
+                <span>API Key ប្រព័ន្ធឥតគិតថ្លៃ (System Free Key Pool)</span>
+              </label>
+              <span class="text-[10px] text-emerald-700 bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 w-fit">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                ភ្ជាប់ស្វ័យប្រវត្តិ (Active)
+              </span>
+            </div>
+            <div class="relative rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i data-lucide="key" class="h-4 w-4 text-zinc-400"></i>
+              </span>
+              <input 
+                type="text" 
+                readonly 
+                value="AQ.Ab8RN6•••••••••••••••••••••••••••••••• (Server Pool)" 
+                class="w-full pl-9 pr-3 py-2 bg-transparent border-0 text-zinc-500 text-xs font-mono cursor-not-allowed select-none focus:ring-0 focus:outline-none"
+              />
+            </div>
+            <p class="text-[10px] text-zinc-400">
+              ប្រព័ន្ធបានផ្តល់ជូន Key ឥតគិតថ្លៃដោយស្វ័យប្រវត្តិតាមថ្ងៃ (១ Key ក្នុងមួយ User)។
+            </p>
+          </div>
+
+          <!-- User Personal API Key Input -->
           <div class="space-y-2">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <label for="apiKey" class="block text-sm font-semibold text-zinc-800">Google AI Studio API Key</label>
-              <span class="text-[11px] text-zinc-400 font-normal">Your key remains local & secure</span>
+              <label for="apiKey" class="block text-sm font-semibold text-brand-700 flex items-center gap-1.5">
+                <i data-lucide="user-check" class="h-4 w-4 text-brand-600"></i>
+                <span>Google AI Studio API Key ផ្ទាល់ខ្លួន (ប្រសិនបើមាន)</span>
+              </label>
+              <span class="text-[11px] text-zinc-400 font-normal">ប្រើ Key ផ្ទាល់ខ្លួនជាមុន</span>
             </div>
             <div class="relative rounded-xl border border-zinc-200 bg-zinc-50/70 overflow-hidden glow-border transition-all duration-300">
               <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -133,13 +164,14 @@
                 type="password" 
                 id="apiKey" 
                 name="apiKey" 
-                placeholder="AIzaSy..." 
+                placeholder="បញ្ចូល Key ផ្ទាល់ខ្លួនរបស់អ្នកនៅទីនេះ (AIzaSy... ឬ AQ.Ab8...)" 
                 class="w-full pl-10 pr-12 py-3.5 bg-transparent border-0 text-zinc-900 placeholder-zinc-400 focus:ring-0 focus:outline-none text-sm transition-all"
               />
               <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
                 <button 
                   type="button" 
                   id="toggleApiKey"
+                  title="Show/Hide Key"
                   class="text-zinc-400 hover:text-zinc-600 transition-colors p-1.5 hover:bg-zinc-200/50 rounded-lg cursor-pointer"
                 >
                   <i data-lucide="eye" id="eyeIcon" class="h-4 w-4"></i>
@@ -154,9 +186,12 @@
                 class="rounded bg-white border-zinc-300 text-brand-600 focus:ring-brand-500/30 focus:ring-offset-0 h-4 w-4 cursor-pointer accent-brand-600"
               />
               <label for="saveKey" class="text-xs text-zinc-600 font-medium select-none cursor-pointer hover:text-zinc-800 transition-colors">
-                រក្សាទុក API Key នេះសម្រាប់ប្រើលើកក្រោយ (Remember)
+                រក្សាទុក API Key ផ្ទាល់ខ្លួននេះសម្រាប់ប្រើលើកក្រោយ (Remember)
               </label>
             </div>
+            <p class="text-[11px] text-zinc-500 italic px-1">
+              *ចំណាំ៖ ប្រសិនបើអ្នកដាក់ Key ផ្ទាល់ខ្លួន ប្រព័ន្ធនឹងប្រើ Key របស់អ្នកមុនគេ ហើយបើអស់ Credit វានឹងប្តូរមកប្រើ Key របស់ប្រព័ន្ធខាងលើដោយស្វ័យប្រវត្តិ។
+            </p>
           </div>
 
           <!-- Drag and Drop Zone -->
@@ -336,8 +371,15 @@
 
     // Load user's own saved API key from localStorage if they previously saved one
     window.addEventListener('load', () => {
+      const oldServerKey = atob('QVEuQWI4Uk42SXY5Qk1QUFM3ZDVrdXgtV3EwR0tjczE5M3NMRVZxdFlKNGhvMGhvM0x1RlE=');
       const savedKey = localStorage.getItem('google_gemini_api_key');
-      if (savedKey) {
+      
+      // If the saved key was the old server default key, clean it up!
+      if (savedKey === oldServerKey) {
+        localStorage.removeItem('google_gemini_api_key');
+        apiKeyInput.value = '';
+        saveKeyCheckbox.checked = false;
+      } else if (savedKey && savedKey.trim().length > 0) {
         apiKeyInput.value = savedKey;
         saveKeyCheckbox.checked = true;
       }
