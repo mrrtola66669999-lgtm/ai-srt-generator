@@ -284,8 +284,7 @@ function isFallbackableError(error) {
  * Build candidate API keys for a request in strict priority order:
  * 1. User's Personal Key 1 (Primary)
  * 2. User's Personal Key 2 (Backup)
- * 3. Dedicated Server Key assigned to this user for today
- * 4. All remaining active Server Pool keys (Emergency Backups)
+ * 3. Dedicated Server Key assigned to this user for today (Strictly ONLY ONE server key per user per day)
  * @param {express.Request} req 
  * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
  */
@@ -318,7 +317,7 @@ function getCandidateKeys(req) {
     added.add(key2);
   }
 
-  // 3. Dedicated Server Key assigned to this user
+  // 3. Dedicated Server Key assigned to this user (Strictly ONLY ONE server key per user per day)
   const assigned = getDedicatedKeyForUser(clientId, clientIp);
   if (assigned && !added.has(assigned.key)) {
     candidates.push({
@@ -327,20 +326,6 @@ function getCandidateKeys(req) {
       isUserKey: false
     });
     added.add(assigned.key);
-  }
-
-  // 4. Server Pool Backup Keys: In case the dedicated key or user keys fail, seamlessly fallback to remaining pool keys!
-  const pool = getApiKeyPool();
-  for (let idx = 0; idx < pool.length; idx++) {
-    const k = pool[idx];
-    if (!added.has(k)) {
-      candidates.push({
-        apiKey: k,
-        description: `Server Pool Backup Key #${idx + 1}`,
-        isUserKey: false
-      });
-      added.add(k);
-    }
   }
 
   return candidates;
@@ -492,7 +477,7 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
     const rawMsg = (lastError && lastError.message) || '';
     if (isQuotaError(lastError)) {
       return res.status(429).json({ 
-        error: 'កូតាសម្រាប់ថ្ងៃនេះបានអស់ហើយ! សូមរង់ចាំបន្តិច ឬបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់។' 
+        error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
       });
     }
     if (rawMsg.includes('401') || rawMsg.includes('authentication') || rawMsg.includes('UNAUTHENTICATED')) {
@@ -624,6 +609,11 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
 
   } catch (error) {
     console.error('Translation error details:', error);
+    if (isQuotaError(error)) {
+      return res.status(429).json({ 
+        error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
+      });
+    }
     return res.status(500).json({ error: error.message || 'An error occurred during translation.' });
   }
 });
