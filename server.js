@@ -159,6 +159,14 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Keep-Alive & Health Check Endpoints (For UptimeRobot / Cron-Job to prevent Render cold-start sleep)
+app.get('/ping', (req, res) => {
+  res.status(200).send('pong');
+});
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: Math.floor(process.uptime()) });
+});
+
 // Rate Limiter: Max 30 requests per 24 hours per IP for shared pool
 const apiLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
