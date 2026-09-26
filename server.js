@@ -122,9 +122,9 @@ function getDedicatedKeyForUser(clientId, clientIp) {
 
 const FALLBACK_MODELS = [
   'gemini-3.8-flash',
-  'gemini-flash-latest',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash'
+  'gemini-3.7-flash',
+  'gemini-3.5-flash',
+  'gemini-flash-latest'
 ];
 
 /**
@@ -132,6 +132,9 @@ const FALLBACK_MODELS = [
  */
 async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MODELS) {
   let lastError = null;
+  let quotaError = null;
+  let demandError = null;
+
   for (const model of models) {
     try {
       console.log(`Attempting generateContent with model: ${model}`);
@@ -144,9 +147,16 @@ async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MO
     } catch (err) {
       console.warn(`Model ${model} failed: ${err.message}. Trying next fallback model...`);
       lastError = err;
+      if (isQuotaError(err)) {
+        quotaError = err;
+      }
+      const msg = (err && err.message) ? err.message.toLowerCase() : '';
+      if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
+        demandError = err;
+      }
     }
   }
-  throw lastError || new Error('All fallback models failed.');
+  throw quotaError || demandError || lastError || new Error('All fallback models failed.');
 }
 
 // Ensure uploads folder exists
@@ -279,8 +289,12 @@ function isFallbackableError(error) {
   return msg.includes('401') ||
          msg.includes('402') ||
          msg.includes('403') ||
+         msg.includes('404') ||
          msg.includes('429') ||
+         msg.includes('500') ||
+         msg.includes('502') ||
          msg.includes('503') ||
+         msg.includes('504') ||
          msg.includes('unauthenticated') ||
          msg.includes('invalid authentication') ||
          msg.includes('credentials') ||
@@ -290,14 +304,19 @@ function isFallbackableError(error) {
          msg.includes('permission_denied') ||
          msg.includes('denied access') ||
          msg.includes('service account') ||
-         msg.includes('resource_exhausted');
+         msg.includes('resource_exhausted') ||
+         msg.includes('high demand') ||
+         msg.includes('overloaded') ||
+         msg.includes('not found') ||
+         msg.includes('no longer available');
 }
 
 /**
  * Build candidate API keys for a request in strict priority order:
  * 1. User's Personal Key 1 (Primary)
  * 2. User's Personal Key 2 (Backup)
- * 3. Dedicated Server Key assigned to this user for today (Strictly ONLY ONE server key per user per day)
+ * 3. Dedicated Server Key assigned to this user for today
+ * 4. Backup Server Keys from pool (ensures service never fails if assigned key hits quota or 503 high demand)
  * @param {express.Request} req 
  * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
  */
@@ -330,7 +349,7 @@ function getCandidateKeys(req) {
     added.add(key2);
   }
 
-  // 3. Dedicated Server Key assigned to this user (Strictly ONLY ONE server key per user per day)
+  // 3. Dedicated Server Key assigned to this user for today
   const assigned = getDedicatedKeyForUser(clientId, clientIp);
   if (assigned && !added.has(assigned.key)) {
     candidates.push({
@@ -339,6 +358,22 @@ function getCandidateKeys(req) {
       isUserKey: false
     });
     added.add(assigned.key);
+  }
+
+  // 4. Backup Server Keys from the pool (seamless fallback if dedicated key hits 503 high demand or quota)
+  const pool = getApiKeyPool();
+  for (let idx = 0; idx < pool.length; idx++) {
+    const k = pool[idx];
+    if (!added.has(k)) {
+      candidates.push({
+        apiKey: k,
+        description: `Server Backup Key #${idx + 1}`,
+        isUserKey: false
+      });
+      added.add(k);
+      // Allow up to 3 fallback server keys so requests always succeed without overloading
+      if (candidates.filter(c => !c.isUserKey).length >= 4) break;
+    }
   }
 
   return candidates;
@@ -493,12 +528,18 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
         error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
       });
     }
+    if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
+      return res.status(503).json({
+        error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand)។ សូមរង់ចាំបន្តិចហើយចុចសាកល្បងម្តងទៀត ឬបញ្ចូល API Key ផ្ទាល់ខ្លួន។'
+      });
+    }
     if (rawMsg.includes('401') || rawMsg.includes('authentication') || rawMsg.includes('UNAUTHENTICATED')) {
       return res.status(401).json({
         error: 'API Key មិនត្រឹមត្រូវ ឬផុតកំណត់។ សូមពិនិត្យមើល Google AI Studio API Key របស់អ្នកឡើងវិញ។'
       });
     }
-    return res.status(500).json({ error: rawMsg || 'An error occurred during transcription.' });
+    const sanitizedError = rawMsg.replace(/models\/[a-zA-Z0-9.-]+/g, 'AI Model');
+    return res.status(500).json({ error: sanitizedError || 'មានបញ្ហាមិនអាចបង្កើត Subtitle បានទេ។ សូមសាកល្បងម្តងទៀត។' });
   }
 });
 
@@ -704,7 +745,14 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
         error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
       });
     }
-    return res.status(500).json({ error: error.message || 'An error occurred during translation.' });
+    const rawMsg = (error && error.message) || '';
+    if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
+      return res.status(503).json({
+        error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand)។ សូមរង់ចាំបន្តិចហើយចុចបកប្រែម្តងទៀត ឬបញ្ចូល API Key ផ្ទាល់ខ្លួន។'
+      });
+    }
+    const sanitizedError = rawMsg.replace(/models\/[a-zA-Z0-9.-]+/g, 'AI Model');
+    return res.status(500).json({ error: sanitizedError || 'មានបញ្ហាក្នុងការបកប្រែ Subtitle ជាភាសាខ្មែរ។' });
   }
 });
 
