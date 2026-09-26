@@ -120,7 +120,12 @@ function getDedicatedKeyForUser(clientId, clientIp) {
   return newAssignment;
 }
 
-const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest'];
+const FALLBACK_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash'
+];
 
 /**
  * Generate content using GoogleGenAI with multi-model fallback to ensure high reliability
@@ -426,7 +431,7 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
           }
         ],
         config: {
-          systemInstruction: "Listen to this audio and generate a precise SRT subtitle file. Output ONLY the raw SRT format text. Do not include markdown code blocks (```srt) or explanations.",
+          systemInstruction: "Listen to this audio and generate a precise standard SRT subtitle file.\nCRITICAL FORMAT REQUIREMENTS:\n1. Each subtitle block must have a sequential integer index (1, 2, 3...)\n2. Each block must have a timestamp in format: HH:MM:SS,mmm --> HH:MM:SS,mmm (e.g., 00:00:04,719 --> 00:00:05,549)\n3. Each block must have the exact transcribed dialogue text\n4. Each subtitle block must be separated by a blank line.\n5. Output ONLY the raw SRT format text without markdown code blocks (```srt) or explanations.",
           safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -497,22 +502,90 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   }
 });
 
-// Helper to parse SRT string into cue objects
+// Helper to parse SRT string into cue objects (handles any spacing, missing indices, colons in milliseconds)
 function parseSrt(srtText) {
-  const normalize = srtText.replace(/\r\n/g, '\n').trim();
-  const rawBlocks = normalize.split(/\n\s*\n/);
+  if (!srtText) return [];
+  const normalize = srtText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalize.split('\n');
   const cues = [];
-  
-  for (const block of rawBlocks) {
-    const lines = block.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    if (lines.length >= 3) {
-      const index = lines[0];
-      const timestamp = lines[1];
-      const text = lines.slice(2).join('\n');
-      cues.push({ index, timestamp, text });
-    } else if (lines.length === 2 && lines[0].includes('-->')) {
-      cues.push({ index: '', timestamp: lines[0], text: lines[1] });
+
+  function isTimestampLine(str) {
+    return str.includes('-->') && /\d+:\d+/.test(str);
+  }
+
+  // Format any timestamp to standard SRT format (HH:MM:SS,mmm --> HH:MM:SS,mmm)
+  function formatTimestamp(raw) {
+    const parts = raw.split('-->').map(p => p.trim());
+    if (parts.length !== 2) return raw;
+
+    function fixTime(t) {
+      const clean = t.replace(/[^\d:.,]/g, '');
+      const colons = clean.split(':');
+      if (colons.length === 3) {
+        const last = colons[2];
+        if (last.length === 3 && /^\d{3}$/.test(last)) {
+          // MM:SS:mmm -> 00:MM:SS,mmm
+          return '00:' + colons[0].padStart(2, '0') + ':' + colons[1].padStart(2, '0') + ',' + last;
+        }
+        if (last.includes('.') || last.includes(',')) {
+          const [sec, ms] = last.split(/[.,]/);
+          return colons[0].padStart(2, '0') + ':' + colons[1].padStart(2, '0') + ':' + (sec || '00').padStart(2, '0') + ',' + (ms || '000').padEnd(3, '0').slice(0, 3);
+        }
+        return colons[0].padStart(2, '0') + ':' + colons[1].padStart(2, '0') + ':' + last.padStart(2, '0') + ',000';
+      } else if (colons.length === 4) {
+        // HH:MM:SS:mmm
+        return colons[0].padStart(2, '0') + ':' + colons[1].padStart(2, '0') + ':' + colons[2].padStart(2, '0') + ',' + colons[3].padEnd(3, '0').slice(0, 3);
+      } else if (colons.length === 2) {
+        // MM:SS.mmm
+        const [sec, ms] = colons[1].split(/[.,]/);
+        return '00:' + colons[0].padStart(2, '0') + ':' + (sec || '00').padStart(2, '0') + ',' + (ms || '000').padEnd(3, '0').slice(0, 3);
+      }
+      return clean.replace('.', ',');
     }
+
+    return fixTime(parts[0]) + ' --> ' + fixTime(parts[1]);
+  }
+
+  let currentCue = null;
+  let textLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (isTimestampLine(line)) {
+      if (currentCue) {
+        if (textLines.length > 0 && /^\d+$/.test(textLines[textLines.length - 1])) {
+          textLines.pop();
+        }
+        currentCue.text = textLines.join('\n').trim();
+        if (currentCue.text.length > 0) {
+          cues.push(currentCue);
+        }
+      }
+      currentCue = {
+        index: (cues.length + 1).toString(),
+        timestamp: formatTimestamp(line),
+        text: ''
+      };
+      textLines = [];
+    } else if (currentCue) {
+      if (line.length > 0) {
+        textLines.push(line);
+      }
+    }
+  }
+
+  if (currentCue) {
+    if (textLines.length > 0 && /^\d+$/.test(textLines[textLines.length - 1])) {
+      textLines.pop();
+    }
+    currentCue.text = textLines.join('\n').trim();
+    if (currentCue.text.length > 0) {
+      cues.push(currentCue);
+    }
+  }
+
+  for (let i = 0; i < cues.length; i++) {
+    cues[i].index = (i + 1).toString();
   }
   return cues;
 }
@@ -527,7 +600,13 @@ async function translateArray(texts, apiKey) {
     const chunk = texts.slice(i, i + chunkSize);
     console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)}...`);
     
-    const prompt = `You are a professional subtitle translator. Translate the following JSON array of subtitle lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, and meaning. Keep the exact same array length and order. Output ONLY a valid JSON array of strings without markdown formatting.\n\n${JSON.stringify(chunk)}`;
+    const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ).
+CRITICAL RULES:
+1. Translate EVERY single line without skipping, even short phrases or questions (e.g. "装什么呀？" -> "ធ្វើពុតធ្វើអី?").
+2. Maintain the EXACT same array length (${chunk.length} items) and identical order.
+3. Output ONLY a valid JSON array of strings without markdown formatting.
+
+${JSON.stringify(chunk)}`;
     
     const response = await generateWithModelFallback(ai, {
       contents: [{ text: prompt }],
@@ -549,7 +628,10 @@ async function translateArray(texts, apiKey) {
     
     // Safely pad to exact chunk length to preserve cue alignment
     for (let j = 0; j < chunk.length; j++) {
-      translated.push((chunkTranslated && chunkTranslated[j]) ? String(chunkTranslated[j]) : chunk[j]);
+      const val = (chunkTranslated && chunkTranslated[j] && String(chunkTranslated[j]).trim().length > 0) 
+        ? String(chunkTranslated[j]).trim() 
+        : chunk[j];
+      translated.push(val);
     }
   }
   
@@ -602,16 +684,16 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
 
     const srtLines = [];
     for (let i = 0; i < cues.length; i++) {
-      const translatedText = translatedTexts[i] || cues[i].text;
-      if (cues[i].index) {
-        srtLines.push(cues[i].index);
-      }
+      const translatedText = (translatedTexts[i] && translatedTexts[i].trim().length > 0) 
+        ? translatedTexts[i].trim() 
+        : cues[i].text;
+      srtLines.push((i + 1).toString());
       srtLines.push(cues[i].timestamp);
       srtLines.push(translatedText);
       srtLines.push('');
     }
 
-    const translatedSrt = srtLines.join('\n');
+    const translatedSrt = srtLines.join('\n').trim() + '\n';
     console.log('SRT translation complete!');
     return res.json({ translatedSrt });
 
