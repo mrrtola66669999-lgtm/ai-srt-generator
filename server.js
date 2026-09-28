@@ -466,7 +466,25 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
           }
         ],
         config: {
-          systemInstruction: "Listen to this audio and generate a precise standard SRT subtitle file.\nCRITICAL FORMAT REQUIREMENTS:\n1. Each subtitle block must have a sequential integer index (1, 2, 3...)\n2. Each block must have a timestamp in format: HH:MM:SS,mmm --> HH:MM:SS,mmm (e.g., 00:00:04,719 --> 00:00:05,549)\n3. Each block must have the exact transcribed dialogue text\n4. Each subtitle block must be separated by a blank line.\n5. Output ONLY the raw SRT format text without markdown code blocks (```srt) or explanations.",
+          systemInstruction: `You are an expert audio transcriber and subtitle creator. Listen to this audio carefully and generate a precise, standard SubRip (.SRT) subtitle file.
+
+CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
+1. For EVERY subtitle segment / dialogue line, identify whether the speaker's voice is Male or Female:
+   - If the speaker is Male (សំឡេងបុរស/ប្រុស), prefix the dialogue text with: [ប្រុស] 
+   - If the speaker is Female (សំឡេងស្រ្តី/ស្រី), prefix the dialogue text with: [ស្រី]
+   - Example format:
+     1
+     00:00:01,000 --> 00:00:04,500
+     [ប្រុស] Hello, how are you today?
+
+     2
+     00:00:05,100 --> 00:00:08,200
+     [ស្រី] I am doing great, thank you!
+
+2. Every single dialogue line MUST start with either [ប្រុស] or [ស្រី].
+3. Each subtitle block must have a sequential integer index (1, 2, 3...) and a standard timestamp in format: HH:MM:SS,mmm --> HH:MM:SS,mmm.
+4. Ensure timestamps are strictly synchronized with the spoken audio.
+5. Output ONLY the raw valid SRT format text without markdown code blocks (\`\`\`srt) or commentary.`,
           safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -641,11 +659,13 @@ async function translateArray(texts, apiKey) {
     const chunk = texts.slice(i, i + chunkSize);
     console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)}...`);
     
-    const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ).
+    const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, context, and meaning.
 CRITICAL RULES:
-1. Translate EVERY single line without skipping, even short phrases or questions (e.g. "装什么呀？" -> "ធ្វើពុតធ្វើអី?").
-2. Maintain the EXACT same array length (${chunk.length} items) and identical order.
-3. Output ONLY a valid JSON array of strings without markdown formatting.
+1. SPEAKER VOICE TAGS: Each item in the array contains a speaker gender tag: '[ប្រុស]' (Male) or '[ស្រី]' (Female) at the beginning. You MUST preserve and keep the exact speaker tag '[ប្រុស]' or '[ស្រី]' at the beginning of each translated line. Do NOT remove, translate, or modify the '[ប្រុស]' and '[ស្រី]' tags.
+   - Example: "[ប្រុស] Hello everyone" -> "[ប្រុស] សួស្តីអ្នកទាំងអស់គ្នា", "[ស្រី] Thank you" -> "[ស្រី] សូមអរគុណ".
+2. Translate EVERY single line without skipping, even short phrases or questions.
+3. Maintain the EXACT same array length (${chunk.length} items) and identical order.
+4. Output ONLY a valid JSON array of strings without markdown formatting.
 
 ${JSON.stringify(chunk)}`;
     
