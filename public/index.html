@@ -202,7 +202,7 @@
               </label>
             </div>
             <p class="text-[11px] text-zinc-500 leading-relaxed px-1">
-              *<strong>របៀបដំណើរការ</strong>៖ ប្រព័ន្ធនឹងដំណើរការ <strong>Key ទី ១</strong> របស់អ្នកជាមុន។ បើ Key ទី ១ អស់កូតា វានឹងស្វ័យប្រវត្តិចូលទៅប្រើ <strong>Key ទី ២</strong>។ ប្រសិនបើ Key ផ្ទាល់ខ្លួនទាំងពីរអស់កូតា (ឬមិនបានដាក់ Key ផ្ទាល់ខ្លួន) ទើបប្រព័ន្ធផ្តល់សិទ្ធិឱ្យចូលប្រើ <strong>Key ឥតគិតថ្លៃរបស់ប្រព័ន្ធចំនួន ១ Key សម្រាប់ថ្ងៃនេះ</strong>។ ប្រសិនបើ Key ឥតគិតថ្លៃនេះអស់កូតាដែរ លោកអ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះម្តងទៀតនៅថ្ងៃស្អែក ឬបញ្ចូល Key ផ្ទាល់ខ្លួនថ្មី។
+              *<strong>របៀបដំណើរការ</strong>៖ ប្រព័ន្ធដំណើរការដោយប្រើប្រាស់ <strong>Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក</strong> (Key ទី ១ ជា Key ចម្បង និង Key ទី ២ ជា Key បម្រុងពេល Key ទី ១ អស់កូតា)។ សូមបញ្ចូល API Key យ៉ាងហោចណាស់មួយដើម្បីដំណើរការ។
             </p>
           </div>
 
@@ -665,6 +665,12 @@
       const apiKey1 = apiKeyInput1.value.trim();
       const apiKey2 = apiKeyInput2.value.trim();
 
+      if (!apiKey1 && !apiKey2) {
+        alert('សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ជាមុនសិន!');
+        apiKeyInput1.focus();
+        return;
+      }
+
       if (!selectedFile) {
         alert('សូមជ្រើសរើសឯកសារសំឡេង MP3 ជាមុនសិន!');
         return;
@@ -801,6 +807,12 @@
 
       const apiKey1 = apiKeyInput1.value.trim();
       const apiKey2 = apiKeyInput2.value.trim();
+
+      if (!apiKey1 && !apiKey2) {
+        alert('សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីបកប្រែ!');
+        apiKeyInput1.focus();
+        return;
+      }
 
       try {
         const resp = await fetch('/api/translate', {

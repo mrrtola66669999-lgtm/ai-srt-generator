@@ -312,19 +312,15 @@ function isFallbackableError(error) {
 }
 
 /**
- * Build candidate API keys for a request in strict priority order:
+ * Build candidate API keys strictly from user's provided personal keys:
  * 1. User's Personal Key 1 (Primary)
  * 2. User's Personal Key 2 (Backup)
- * 3. Dedicated Server Key assigned to this user for today
- * 4. Backup Server Keys from pool (ensures service never fails if assigned key hits quota or 503 high demand)
  * @param {express.Request} req 
  * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
  */
 function getCandidateKeys(req) {
   const key1 = (req.headers['x-api-key-1'] || req.headers['x-api-key'] || '').trim();
   const key2 = (req.headers['x-api-key-2'] || '').trim();
-  const clientId = req.headers['x-client-id'];
-  const clientIp = req.headers['x-forwarded-for'] || req.ip;
 
   const candidates = [];
   const added = new Set();
@@ -347,33 +343,6 @@ function getCandidateKeys(req) {
       isUserKey: true
     });
     added.add(key2);
-  }
-
-  // 3. Dedicated Server Key assigned to this user for today
-  const assigned = getDedicatedKeyForUser(clientId, clientIp);
-  if (assigned && !added.has(assigned.key)) {
-    candidates.push({
-      apiKey: assigned.key,
-      description: `Dedicated Server Key #${assigned.keyNumber} (Assigned to User #${assigned.userNumber} for today)`,
-      isUserKey: false
-    });
-    added.add(assigned.key);
-  }
-
-  // 4. Backup Server Keys from the pool (seamless fallback if dedicated key hits 503 high demand or quota)
-  const pool = getApiKeyPool();
-  for (let idx = 0; idx < pool.length; idx++) {
-    const k = pool[idx];
-    if (!added.has(k)) {
-      candidates.push({
-        apiKey: k,
-        description: `Server Backup Key #${idx + 1}`,
-        isUserKey: false
-      });
-      added.add(k);
-      // Allow up to 3 fallback server keys so requests always succeed without overloading
-      if (candidates.filter(c => !c.isUserKey).length >= 4) break;
-    }
   }
 
   return candidates;
@@ -411,14 +380,13 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
     return res.status(500).json({ error: 'Failed to compress audio file with FFmpeg.' });
   }
 
-  // 🔑 CANDIDATE KEYS FOR THIS USER:
-  // Priority: User Key 1 -> User Key 2 -> Dedicated Server Key
+  // CANDIDATE KEYS FOR THIS USER (Personal Keys ONLY):
   const candidateKeys = getCandidateKeys(req);
 
   if (candidateKeys.length === 0) {
     fs.unlink(uploadedPath, () => {});
     fs.unlink(compressedPath, () => {});
-    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
+    return res.status(400).json({ error: 'សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីដំណើរការ។' });
   }
 
   let lastError = null;
@@ -543,7 +511,7 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
     const rawMsg = (lastError && lastError.message) || '';
     if (isQuotaError(lastError)) {
       return res.status(429).json({ 
-        error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
+        error: 'កូតា Google AI Studio API Key របស់អ្នកបានអស់ហើយ! សូមពិនិត្យមើលកូតាក្នុង Google AI Studio ឬផ្លាស់ប្តូរ API Key ថ្មី។' 
       });
     }
     if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
@@ -709,7 +677,7 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
 
   const candidateKeys = getCandidateKeys(req);
   if (candidateKeys.length === 0) {
-    return res.status(400).json({ error: 'ប្រព័ន្ធមិនទាន់បានកំណត់ API Key លំនាំដើមឡើយ។ សូមបញ្ចូល API Key ផ្ទាល់ខ្លួនរបស់លោកអ្នក។' });
+    return res.status(400).json({ error: 'សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីបកប្រែ។' });
   }
 
   try {
@@ -762,7 +730,7 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
     console.error('Translation error details:', error);
     if (isQuotaError(error)) {
       return res.status(429).json({ 
-        error: 'កូតាឥតគិតថ្លៃសម្រាប់ថ្ងៃនេះបានអស់ហើយ! អ្នកអាចត្រលប់មកប្រើប្រាស់ Key នេះបានទៀតនៅថ្ងៃស្អែក (ឬអាចបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនថ្មីដើម្បីបន្តប្រើប្រាស់ឥឡូវនេះ)។' 
+        error: 'កូតា Google AI Studio API Key របស់អ្នកបានអស់ហើយ! សូមពិនិត្យមើលកូតាក្នុង Google AI Studio ឬផ្លាស់ប្តូរ API Key ថ្មី។' 
       });
     }
     const rawMsg = (error && error.message) || '';
