@@ -494,6 +494,27 @@
       }
     });
 
+    // Helper to persist API keys immediately in localStorage
+    function persistApiKeys() {
+      if (saveKeyCheckbox.checked) {
+        const k1 = apiKeyInput1.value.trim();
+        const k2 = apiKeyInput2.value.trim();
+        if (k1) localStorage.setItem('user_gemini_api_key_1', k1);
+        else localStorage.removeItem('user_gemini_api_key_1');
+
+        if (k2) localStorage.setItem('user_gemini_api_key_2', k2);
+        else localStorage.removeItem('user_gemini_api_key_2');
+      } else {
+        localStorage.removeItem('user_gemini_api_key_1');
+        localStorage.removeItem('user_gemini_api_key_2');
+      }
+    }
+
+    // Auto-save immediately when user types or toggles the checkbox
+    saveKeyCheckbox.addEventListener('change', persistApiKeys);
+    apiKeyInput1.addEventListener('input', persistApiKeys);
+    apiKeyInput2.addEventListener('input', persistApiKeys);
+
     // Toggle API Key 1 Visibility
     toggleApiKey1.addEventListener('click', () => {
       const type = apiKeyInput1.getAttribute('type') === 'password' ? 'text' : 'password';
