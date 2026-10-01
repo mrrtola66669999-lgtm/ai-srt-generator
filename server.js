@@ -519,6 +519,11 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
         error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand)។ សូមរង់ចាំបន្តិចហើយចុចសាកល្បងម្តងទៀត ឬបញ្ចូល API Key ផ្ទាល់ខ្លួន។'
       });
     }
+    if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('denied access')) {
+      return res.status(403).json({
+        error: 'គម្រោង Google AI Studio នៃ API Key នេះត្រូវបាន Google បិទសិទ្ធិ (Permission Denied)។ សូមចូលទៅកាន់ Google AI Studio ដើម្បីបង្កើត API Key ថ្មី។'
+      });
+    }
     if (rawMsg.includes('401') || rawMsg.includes('authentication') || rawMsg.includes('UNAUTHENTICATED')) {
       return res.status(401).json({
         error: 'API Key មិនត្រឹមត្រូវ ឬផុតកំណត់។ សូមពិនិត្យមើល Google AI Studio API Key របស់អ្នកឡើងវិញ។'
@@ -734,6 +739,11 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
       });
     }
     const rawMsg = (error && error.message) || '';
+    if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('denied access')) {
+      return res.status(403).json({
+        error: 'គម្រោង Google AI Studio នៃ API Key នេះត្រូវបាន Google បិទសិទ្ធិ (Permission Denied)។ សូមចូលទៅកាន់ Google AI Studio ដើម្បីបង្កើត API Key ថ្មី។'
+      });
+    }
     if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
       return res.status(503).json({
         error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand)។ សូមរង់ចាំបន្តិចហើយចុចបកប្រែម្តងទៀត ឬបញ្ចូល API Key ផ្ទាល់ខ្លួន។'
