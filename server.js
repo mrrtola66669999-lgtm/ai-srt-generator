@@ -123,12 +123,16 @@ function getDedicatedKeyForUser(clientId, clientIp) {
 const FALLBACK_MODELS = [
   'gemini-3.8-flash',
   'gemini-3.7-flash',
-  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
   'gemini-flash-latest'
 ];
 
 /**
- * Generate content using GoogleGenAI with multi-model fallback to ensure high reliability
+ * Generate content using GoogleGenAI with multi-model fallback and auto-retry to ensure high reliability
  */
 async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MODELS) {
   let lastError = null;
@@ -136,23 +140,30 @@ async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MO
   let demandError = null;
 
   for (const model of models) {
-    try {
-      console.log(`Attempting generateContent with model: ${model}`);
-      const response = await ai.models.generateContent({
-        ...requestParams,
-        model
-      });
-      console.log(`Success with model: ${model}`);
-      return response;
-    } catch (err) {
-      console.warn(`Model ${model} failed: ${err.message}. Trying next fallback model...`);
-      lastError = err;
-      if (isQuotaError(err)) {
-        quotaError = err;
-      }
-      const msg = (err && err.message) ? err.message.toLowerCase() : '';
-      if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
-        demandError = err;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`Attempting generateContent with model: ${model} (attempt ${attempt}/2)`);
+        const response = await ai.models.generateContent({
+          ...requestParams,
+          model
+        });
+        console.log(`Success with model: ${model}`);
+        return response;
+      } catch (err) {
+        console.warn(`Model ${model} (attempt ${attempt}) failed: ${err.message}`);
+        lastError = err;
+        if (isQuotaError(err)) {
+          quotaError = err;
+          break;
+        }
+        const msg = (err && err.message) ? err.message.toLowerCase() : '';
+        if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
+          demandError = err;
+          // Short pause of 1.2s before retrying or switching models
+          await new Promise(r => setTimeout(r, 1200));
+        } else {
+          break;
+        }
       }
     }
   }
