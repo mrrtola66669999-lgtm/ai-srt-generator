@@ -324,8 +324,12 @@ function isFallbackableError(error) {
  * @returns {Array<{ apiKey: string, description: string, isUserKey: boolean }>}
  */
 function getCandidateKeys(req) {
-  const key1 = (req.headers['x-api-key-1'] || req.headers['x-api-key'] || '').trim();
-  const key2 = (req.headers['x-api-key-2'] || '').trim();
+  const rawKey1 = (req.headers['x-api-key-1'] || req.headers['x-api-key'] || req.body?.apiKey1 || '').trim();
+  const rawKey2 = (req.headers['x-api-key-2'] || req.body?.apiKey2 || '').trim();
+
+  // Strip non-ASCII/invisible characters from keys
+  const key1 = rawKey1.replace(/[^\x20-\x7E]/g, '').trim();
+  const key2 = rawKey2.replace(/[^\x20-\x7E]/g, '').trim();
 
   const candidates = [];
   const added = new Set();
@@ -362,13 +366,13 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   const uploadedPath = req.file.path;
   const compressedPath = path.join(uploadsDir, `${req.file.filename}-compressed.mp3`);
   
-  // 0. Verify duration (max 15 minutes = 900 seconds)
+  // 0. Verify duration (max 120 minutes = 2 hours)
   try {
     const duration = await getFileDuration(uploadedPath);
     console.log(`Uploaded file duration: ${duration} seconds (${(duration / 60).toFixed(2)} minutes)`);
-    if (duration > 15 * 60) {
+    if (duration > 120 * 60) {
       fs.unlink(uploadedPath, () => {});
-      return res.status(400).json({ error: 'ឯកសារត្រូវតែមានប្រវែងខ្លីជាង ១៥ នាទី។' });
+      return res.status(400).json({ error: 'ឯកសារត្រូវតែមានប្រវែងខ្លីជាង ២ ម៉ោង (១២០ នាទី)។' });
     }
   } catch (err) {
     console.error('Error verifying duration:', err);

@@ -494,11 +494,17 @@
       }
     });
 
+    // Helper to clean and sanitize API key string (strips non-ASCII/hidden Unicode chars)
+    function cleanKey(val) {
+      if (!val) return '';
+      return val.replace(/[^\x20-\x7E]/g, '').trim();
+    }
+
     // Helper to persist API keys immediately in localStorage
     function persistApiKeys() {
       if (saveKeyCheckbox.checked) {
-        const k1 = apiKeyInput1.value.trim();
-        const k2 = apiKeyInput2.value.trim();
+        const k1 = cleanKey(apiKeyInput1.value);
+        const k2 = cleanKey(apiKeyInput2.value);
         if (k1) localStorage.setItem('user_gemini_api_key_1', k1);
         else localStorage.removeItem('user_gemini_api_key_1');
 
@@ -683,8 +689,8 @@
     srtForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const apiKey1 = apiKeyInput1.value.trim();
-      const apiKey2 = apiKeyInput2.value.trim();
+      const apiKey1 = cleanKey(apiKeyInput1.value);
+      const apiKey2 = cleanKey(apiKeyInput2.value);
 
       if (!apiKey1 && !apiKey2) {
         alert('សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ជាមុនសិន!');
@@ -721,6 +727,8 @@
       // FormData preparation
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('apiKey1', apiKey1);
+      formData.append('apiKey2', apiKey2);
 
       try {
         const response = await fetch('/api/transcribe', {
@@ -729,7 +737,7 @@
             'x-api-key-1': apiKey1,
             'x-api-key-2': apiKey2,
             'x-api-key': apiKey1 || apiKey2,
-            'x-client-id': clientId
+            'x-client-id': cleanKey(clientId)
           },
           body: formData
         });
@@ -826,8 +834,8 @@
       translationBannerText.innerHTML = `<i data-lucide="loader-2" class="animate-spin h-4 w-4 inline mr-1.5 text-purple-600"></i> AI (Gemini Flash) កំពុងបកប្រែ Subtitles មកជាភាសាខ្មែរ... សូមរង់ចាំបន្តិច`;
       lucide.createIcons();
 
-      const apiKey1 = apiKeyInput1.value.trim();
-      const apiKey2 = apiKeyInput2.value.trim();
+      const apiKey1 = cleanKey(apiKeyInput1.value);
+      const apiKey2 = cleanKey(apiKeyInput2.value);
 
       if (!apiKey1 && !apiKey2) {
         alert('សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីបកប្រែ!');
@@ -843,9 +851,9 @@
             'x-api-key-1': apiKey1,
             'x-api-key-2': apiKey2,
             'x-api-key': apiKey1 || apiKey2,
-            'x-client-id': clientId
+            'x-client-id': cleanKey(clientId)
           },
-          body: JSON.stringify({ srt: originalSrt })
+          body: JSON.stringify({ srt: originalSrt, apiKey1, apiKey2 })
         });
 
         const data = await resp.json();
