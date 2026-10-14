@@ -831,17 +831,11 @@
 
       translationBanner.classList.remove('hidden');
       translationBanner.className = 'p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs text-purple-800 animate-fade-in';
-      translationBannerText.innerHTML = `<i data-lucide="loader-2" class="animate-spin h-4 w-4 inline mr-1.5 text-purple-600"></i> AI (Gemini Flash) កំពុងបកប្រែ Subtitles មកជាភាសាខ្មែរ... សូមរង់ចាំបន្តិច`;
+      translationBannerText.innerHTML = `<i data-lucide="loader-2" class="animate-spin h-4 w-4 inline mr-1.5 text-purple-600"></i> AI កំពុងបកប្រែ Subtitles មកជាភាសាខ្មែរ... សូមរង់ចាំបន្តិច`;
       lucide.createIcons();
 
       const apiKey1 = cleanKey(apiKeyInput1.value);
       const apiKey2 = cleanKey(apiKeyInput2.value);
-
-      if (!apiKey1 && !apiKey2) {
-        alert('សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីបកប្រែ!');
-        apiKeyInput1.focus();
-        return;
-      }
 
       try {
         const resp = await fetch('/api/translate', {

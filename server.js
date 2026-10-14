@@ -394,11 +394,18 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
   }
 
   // CANDIDATE KEYS FOR THIS USER (Personal Keys ONLY):
-  const candidateKeys = getCandidateKeys(req);
+  const rawCandidateKeys = getCandidateKeys(req);
+  const candidateKeys = rawCandidateKeys.filter(c => !c.apiKey.startsWith('cc_'));
+  const hasCodeCraftKey = rawCandidateKeys.some(c => c.apiKey.startsWith('cc_'));
 
   if (candidateKeys.length === 0) {
     fs.unlink(uploadedPath, () => {});
     fs.unlink(compressedPath, () => {});
+    if (hasCodeCraftKey) {
+      return res.status(400).json({ 
+        error: 'API Key (ផ្តើមដោយ cc_) គឺជា CodeCraft Key សម្រាប់ប្រើបកប្រែអត្ថបទ។ សម្រាប់ការស្តាប់សំឡេងបង្កើត Subtitle សូមបញ្ចូល Google AI Studio API Key (ផ្តើមដោយ AIzaSy...)។' 
+      });
+    }
     return res.status(400).json({ error: 'សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីដំណើរការ។' });
   }
 
@@ -635,17 +642,81 @@ function parseSrt(srtText) {
   return cues;
 }
 
-// Helper to translate array of strings in chunks using Gemini JSON mode with model fallback
+const CODECRAFT_API_KEY = process.env.CODECRAFT_API_KEY || 'cc_EoCiGSq3gdSlLuBEhZlpxeARBQyqGXkxpffPNNRElLmpPHaA';
+
+// Helper to translate a chunk of subtitles using CodeCraft API (OpenAI-compatible)
+async function translateChunkWithCodeCraft(chunk, apiKey = CODECRAFT_API_KEY) {
+  const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, context, and meaning.
+CRITICAL RULES:
+1. SPEAKER VOICE TAGS: Each item in the array contains a speaker gender tag: '[ប្រុស]' (Male) or '[ស្រី]' (Female) at the beginning. You MUST preserve and keep the exact speaker tag '[ប្រុស]' or '[ស្រី]' at the beginning of each translated line. Do NOT remove, translate, or modify the '[ប្រុស]' and '[ស្រី]' tags.
+   - Example: "[ប្រុស] Hello everyone" -> "[ប្រុស] សួស្តីអ្នកទាំងអស់គ្នា", "[ស្រី] Thank you" -> "[ស្រី] សូមអរគុណ".
+2. Translate EVERY single line without skipping.
+3. Maintain the EXACT same array length (${chunk.length} items) and identical order.
+4. Output ONLY a valid JSON array of strings without markdown formatting.
+
+${JSON.stringify(chunk)}`;
+
+  const models = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro'];
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      const res = await fetch('https://codecraftapi.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`CodeCraft API error (${res.status}): ${errText}`);
+      }
+
+      const data = await res.json();
+      const rawContent = data.choices?.[0]?.message?.content || '';
+      const cleaned = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) {
+        throw new Error('CodeCraft response is not an array.');
+      }
+      return parsed;
+    } catch (err) {
+      console.warn(`CodeCraft model ${model} failed: ${err.message}. Trying next fallback model...`);
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error('All CodeCraft models failed.');
+}
+
+// Helper to translate array of strings in chunks using CodeCraft or Gemini JSON mode with model fallback
 async function translateArray(texts, apiKey) {
-  const ai = new GoogleGenAI({ apiKey });
+  const isCodeCraft = (apiKey && apiKey.startsWith('cc_'));
   const chunkSize = 25;
   const translated = [];
   
   for (let i = 0; i < texts.length; i += chunkSize) {
     const chunk = texts.slice(i, i + chunkSize);
-    console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)}...`);
+    console.log(`Translating chunk ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(texts.length / chunkSize)} (${isCodeCraft ? 'CodeCraft API' : 'Google Gemini API'})...`);
     
-    const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, context, and meaning.
+    let chunkTranslated = null;
+
+    if (isCodeCraft) {
+      try {
+        chunkTranslated = await translateChunkWithCodeCraft(chunk, apiKey);
+      } catch (ccErr) {
+        console.error('CodeCraft chunk translation error:', ccErr.message);
+        throw ccErr;
+      }
+    } else {
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `You are a professional subtitle translator. Translate EVERY item in the following JSON array of subtitle dialogue lines into natural, fluent Khmer (ភាសាខ្មែរ). Maintain the exact tone, emotion, context, and meaning.
 CRITICAL RULES:
 1. SPEAKER VOICE TAGS: Each item in the array contains a speaker gender tag: '[ប្រុស]' (Male) or '[ស្រី]' (Female) at the beginning. You MUST preserve and keep the exact speaker tag '[ប្រុស]' or '[ស្រី]' at the beginning of each translated line. Do NOT remove, translate, or modify the '[ប្រុស]' and '[ស្រី]' tags.
    - Example: "[ប្រុស] Hello everyone" -> "[ប្រុស] សួស្តីអ្នកទាំងអស់គ្នា", "[ស្រី] Thank you" -> "[ស្រី] សូមអរគុណ".
@@ -654,23 +725,23 @@ CRITICAL RULES:
 4. Output ONLY a valid JSON array of strings without markdown formatting.
 
 ${JSON.stringify(chunk)}`;
-    
-    const response = await generateWithModelFallback(ai, {
-      contents: [{ text: prompt }],
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
+      
+      const response = await generateWithModelFallback(ai, {
+        contents: [{ text: prompt }],
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
 
-    let chunkTranslated = [];
-    try {
-      chunkTranslated = JSON.parse(response.text);
-      if (!Array.isArray(chunkTranslated)) {
-        throw new Error('Response is not an array.');
+      try {
+        chunkTranslated = JSON.parse(response.text);
+        if (!Array.isArray(chunkTranslated)) {
+          throw new Error('Response is not an array.');
+        }
+      } catch (parseError) {
+        console.error('Gemini chunk translation failed to parse JSON. Raw response:', response.text);
+        chunkTranslated = chunk; // Fallback to original
       }
-    } catch (parseError) {
-      console.error('Gemini chunk translation failed to parse JSON. Raw response:', response.text);
-      chunkTranslated = chunk; // Fallback to original
     }
     
     // Safely pad to exact chunk length to preserve cue alignment
@@ -693,9 +764,27 @@ app.post('/api/translate', dynamicRateLimiter, async (req, res) => {
     return res.status(400).json({ error: 'No SRT content provided for translation.' });
   }
 
-  const candidateKeys = getCandidateKeys(req);
+  // Priority for translation:
+  // 1. CodeCraft 100M Tokens Pro API (Default Built-in for all users!)
+  // 2. User Personal Keys (if provided)
+  const candidateKeys = [];
+  if (CODECRAFT_API_KEY) {
+    candidateKeys.push({
+      apiKey: CODECRAFT_API_KEY,
+      description: 'CodeCraft 100M Tokens Pro API (Default Built-in Engine)',
+      isUserKey: false
+    });
+  }
+  
+  const userKeys = getCandidateKeys(req);
+  for (const uk of userKeys) {
+    if (uk.apiKey !== CODECRAFT_API_KEY) {
+      candidateKeys.push(uk);
+    }
+  }
+
   if (candidateKeys.length === 0) {
-    return res.status(400).json({ error: 'សូមបញ្ចូល Google AI Studio API Key ផ្ទាល់ខ្លួនរបស់អ្នក (Key ទី ១ ឬ Key ទី ២) ដើម្បីបកប្រែ។' });
+    return res.status(400).json({ error: 'ប្រព័ន្ធមិនមាន API Key សម្រាប់បកប្រែឡើយ។' });
   }
 
   try {
