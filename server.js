@@ -570,7 +570,7 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
     }
     if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
       return res.status(503).json({
-        error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand)។ សូមរង់ចាំបន្តិចហើយចុចសាកល្បងម្តងទៀត ឬបញ្ចូល API Key ផ្ទាល់ខ្លួន។'
+        error: 'ម៉ាស៊ីនបម្រើ Google AI កំពុងមានចរាចរណ៍មមាញឹកខ្ពស់ (High Demand 503) លើ API Key របស់អ្នក។ សូមរង់ចាំប្រហែល ២០-៣០ វិនាទី រួចចុចសាកល្បងម្តងទៀតបាទ។'
       });
     }
     if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('denied access')) {
