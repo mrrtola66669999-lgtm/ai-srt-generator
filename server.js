@@ -165,9 +165,12 @@ async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MO
         if (!extracted) {
           throw new Error(`Model ${model} returned empty subtitle text.`);
         }
-        response.text = extracted;
         console.log(`Success with model: ${model}`);
-        return response;
+        return {
+          text: extracted,
+          candidates: response.candidates,
+          usageMetadata: response.usageMetadata
+        };
       } catch (err) {
         console.warn(`Model ${model} (attempt ${attempt}) failed: ${err.message}`);
         lastError = err;
