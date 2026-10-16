@@ -546,6 +546,11 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
     return res.json({ srt: srtTextResult, filename: `${path.parse(req.file.originalname).name}.srt` });
   } else {
     const rawMsg = (lastError && lastError.message) || '';
+    if (rawMsg.includes('402') || rawMsg.includes('prepayment') || rawMsg.includes('depleted')) {
+      return res.status(402).json({
+        error: 'គណនី Google AI Studio របស់អ្នកបានភ្ជាប់ Billing/កាតធនាគារ ហើយអស់ក្រេឌីត (Prepayment credits depleted)! សូមប្តូរប្រើ Gmail ផ្សេងទៀតដែលជា Free Tier (មិនមានភ្ជាប់កាត) ឬបញ្ចូលទឹកប្រាក់បន្ថែមក្នុង Google Cloud/AI Studio។'
+      });
+    }
     if (isQuotaError(lastError)) {
       return res.status(429).json({ 
         error: `កូតា Google AI Studio API Key របស់អ្នកបានអស់ហើយ! (${lastError.message})` 
