@@ -127,17 +127,21 @@ function extractResponseText(response) {
   }
   const candidate = response.candidates?.[0];
   if (candidate?.content?.parts) {
-    return candidate.content.parts.map(p => p.text || '').join('').trim();
+    const textParts = candidate.content.parts
+      .filter(p => !p.thought)
+      .map(p => p.text || '')
+      .join('')
+      .trim();
+    if (textParts.length > 0) return textParts;
   }
   return '';
 }
 
 const FALLBACK_MODELS = [
   'gemini-3.6-flash',
-  'gemini-3.7-flash',
   'gemini-3.8-flash',
   'gemini-3.5-flash',
-  'gemini-flash-latest'
+  'gemini-3.7-flash'
 ];
 
 /**
@@ -468,6 +472,9 @@ app.post('/api/transcribe', dynamicRateLimiter, upload.single('file'), async (re
               mimeType: fileState.mimeType,
               fileUri: fileState.uri
             }
+          },
+          {
+            text: 'Please listen to this audio file carefully and generate a complete standard SubRip (.SRT) subtitle file with [ប្រុស] or [ស្រី] tags for all spoken dialogue. If there is only music or no speech, output: 1\n00:00:00,000 --> 00:00:05,000\n[ភ្លេង]'
           }
         ],
         config: {
@@ -549,6 +556,11 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
     if (rawMsg.includes('402') || rawMsg.includes('prepayment') || rawMsg.includes('depleted')) {
       return res.status(402).json({
         error: 'គណនី Google AI Studio របស់អ្នកបានភ្ជាប់ Billing/កាតធនាគារ ហើយអស់ក្រេឌីត (Prepayment credits depleted)! សូមប្តូរប្រើ Gmail ផ្សេងទៀតដែលជា Free Tier (មិនមានភ្ជាប់កាត) ឬបញ្ចូលទឹកប្រាក់បន្ថែមក្នុង Google Cloud/AI Studio។'
+      });
+    }
+    if (rawMsg.includes('empty subtitle text') || rawMsg.includes('empty response')) {
+      return res.status(400).json({
+        error: 'ឯកសារសំឡេងនេះមិនមានសំឡេងមនុស្សនិយាយ ឬពិបាកស្តាប់ (មានតែភ្លេង ឬភាពស្ងាត់)។ សូមពិនិត្យមើលឯកសារ MP3 របស់អ្នកឡើងវិញ ឬសាកល្បងឯកសារផ្សេងទៀត។'
       });
     }
     if (isQuotaError(lastError)) {
