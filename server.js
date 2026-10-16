@@ -548,7 +548,7 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
     const rawMsg = (lastError && lastError.message) || '';
     if (isQuotaError(lastError)) {
       return res.status(429).json({ 
-        error: 'កូតា Google AI Studio API Key របស់អ្នកបានអស់ហើយ! សូមពិនិត្យមើលកូតាក្នុង Google AI Studio ឬផ្លាស់ប្តូរ API Key ថ្មី។' 
+        error: `កូតា Google AI Studio API Key របស់អ្នកបានអស់ហើយ! (${lastError.message})` 
       });
     }
     if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('overloaded')) {
