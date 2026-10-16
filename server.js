@@ -120,14 +120,24 @@ function getDedicatedKeyForUser(clientId, clientIp) {
   return newAssignment;
 }
 
+function extractResponseText(response) {
+  if (!response) return '';
+  if (typeof response.text === 'string' && response.text.trim().length > 0) {
+    return response.text.trim();
+  }
+  const candidate = response.candidates?.[0];
+  if (candidate?.content?.parts) {
+    return candidate.content.parts.map(p => p.text || '').join('').trim();
+  }
+  return '';
+}
+
 const FALLBACK_MODELS = [
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.5-transcribe',
-  'gemini-3.8-flash',
   'gemini-3.6-flash',
   'gemini-3.7-flash',
-  'gemini-3.1-flash-lite'
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-flash-latest'
 ];
 
 /**
@@ -146,6 +156,12 @@ async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MO
           ...requestParams,
           model
         });
+
+        const extracted = extractResponseText(response);
+        if (!extracted) {
+          throw new Error(`Model ${model} returned empty subtitle text.`);
+        }
+        response.text = extracted;
         console.log(`Success with model: ${model}`);
         return response;
       } catch (err) {
@@ -158,8 +174,8 @@ async function generateWithModelFallback(ai, requestParams, models = FALLBACK_MO
         const msg = (err && err.message) ? err.message.toLowerCase() : '';
         if (msg.includes('503') || msg.includes('high demand') || msg.includes('overloaded')) {
           demandError = err;
-          // Short pause of 1.2s before retrying or switching models
-          await new Promise(r => setTimeout(r, 1200));
+          // Short pause before retrying or switching models
+          await new Promise(r => setTimeout(r, 1500));
         } else {
           break;
         }
@@ -483,7 +499,7 @@ CRITICAL FORMAT & SPEAKER VOICE GENDER TAGGING RULES:
         }
       });
 
-      const srtText = response.text;
+      const srtText = extractResponseText(response);
       if (!srtText) {
         throw new Error('Gemini did not return any subtitle text.');
       }
